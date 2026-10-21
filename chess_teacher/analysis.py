@@ -81,6 +81,31 @@ def score_json(score: chess.engine.PovScore) -> Dict:
     return {"cp": cp, "mate": n, "text": text, "white_win": round(win_percent(white), 1)}
 
 
+IDEA_PLIES = 10  # how much of the better line to play out on the board (5 moves each)
+
+
+def line_details(board: chess.Board, line: List[chess.Move], plies: int = IDEA_PLIES) -> List[Dict]:
+    """Each move of an engine line with its position and a plain-language description."""
+    b = board.copy()
+    out = []
+    for move in line[:plies]:
+        if not b.is_legal(move):
+            break
+        san = b.san(move)
+        number = f"{b.fullmove_number}." if b.turn == chess.WHITE else f"{b.fullmove_number}..."
+        detail = {
+            "san": san,
+            "label": f"{number} {san}",
+            "uci": move.uci(),
+            "color": "white" if b.turn == chess.WHITE else "black",
+            "description": describe_move(b, move),
+        }
+        b.push(move)
+        detail["fen"] = b.fen()
+        out.append(detail)
+    return out
+
+
 def evaluate(engine: chess.engine.SimpleEngine, board: chess.Board, limit) -> Evaluation:
     if board.is_checkmate():
         return chess.engine.PovScore(chess.engine.MateGiven, not board.turn), []
@@ -174,6 +199,7 @@ def analyze_pgn(
                 "best_uci": best_move.uci(),
                 "best_line": line_san(board, best_line, plies=10),
                 "best_description": describe_move(board, best_move) if best_move != move else None,
+                "best_line_moves": line_details(board, best_line) if best_move != move else [],
                 "reply_san": after.san(reply) if reply else None,
                 "reply_note": reply_tactic[0] if reply_tactic else None,
                 "reply_line": line_san(after, reply_line, plies=6),

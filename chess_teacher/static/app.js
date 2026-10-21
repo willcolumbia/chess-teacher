@@ -21,6 +21,9 @@ const $ = (sel) => document.querySelector(sel);
 
 // step 0 = intro, steps 1..n = moves, step n+1 = summary.
 const state = { result: null, step: 0, view: "played", flipped: false, myColor: null };
+// "Show why" playback of the better line: idea = null (off) or 0..line length; 0 is the starting position.
+const idea = { index: null, timer: null };
+const IDEA_DELAY_MS = 1600;
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -179,6 +182,8 @@ function buildTimeline() {
 }
 
 function go(step) {
+  stopIdea();
+  idea.index = null;
   state.step = Math.max(0, Math.min(lastStep(), step));
   const m = moves()[state.step - 1];
   // Start on the comparison for your own mistakes, otherwise on the move played.
@@ -200,7 +205,9 @@ function render() {
   $("#next").textContent = state.step === 0 ? "Start ▶" : state.step === lastStep() - 1 ? "Summary ▶" : "Next ▶";
 
   const hasBetter = m && m.best_uci !== m.uci;
-  $("#board-tabs").hidden = !hasBetter;
+  const showingIdea = m && idea.index !== null;
+  $("#board-tabs").hidden = !hasBetter || showingIdea;
+  $("#idea-controls").hidden = !showingIdea;
   for (const tab of document.querySelectorAll("[data-view]")) {
     tab.classList.toggle("active", tab.dataset.view === state.view);
   }
@@ -214,7 +221,9 @@ function render() {
     return;
   }
 
-  if (state.view === "better" && hasBetter) {
+  if (showingIdea) {
+    renderIdea(m);
+  } else if (state.view === "better" && hasBetter) {
     renderBoard(m.fen_before, [m.uci.slice(0, 2), m.uci.slice(2, 4)], [[m.uci, "played"], [m.best_uci, "best"]]);
     renderEval(m.eval_before);
     $("#caption").textContent = `Position before ${moveLabel(m)}. Red: what was played. Green: the better move, ${m.best_san}.`;
@@ -289,8 +298,7 @@ function moveCard(m) {
       el("h3", {}, yours ? "What you could have played" : "What they should have played"),
       el("p", {}, el("strong", {}, m.best_san), m.best_description ? ` — ${lowerFirst(m.best_description)}` : ""),
       m.best_line ? el("p", { class: "line" }, `Engine line: ${m.best_line}`) : null,
-      el("button", { onclick: () => setView(state.view === "better" ? "played" : "better") },
-        state.view === "better" ? "Show the move played" : "Show the better move on the board")
+      ideaSection(m, yours)
     );
   }
 
@@ -348,7 +356,103 @@ function formatClock(seconds) {
 }
 
 function setView(view) {
+  stopIdea();
+  idea.index = null;
   state.view = view;
+  render();
+}
+
+// ---------- "Show why": play out the better line ----------
+
+function ideaSection(m, yours) {
+  const line = m.best_line_moves || [];
+  const box = el("div", { class: "idea" });
+  const buttons = el("div", { class: "row" });
+  if (line.length) {
+    buttons.append(idea.index === null
+      ? el("button", { class: "primary", onclick: startIdea }, `▶ Show why ${m.best_san} is better`)
+      : el("button", { onclick: closeIdea }, "✕ Close the idea"));
+  }
+  if (idea.index === null) {
+    buttons.append(el("button", { onclick: () => setView(state.view === "better" ? "played" : "better") },
+      state.view === "better" ? "Show the move played" : "Show the better move on the board"));
+  }
+  box.append(buttons);
+
+  if (idea.index !== null) {
+    const list = el("ol", { class: "idea-list" });
+    line.forEach((ply, i) => {
+      const mover = ply.color === m.color ? (yours ? "You" : "They") : (yours ? "Opponent" : "You");
+      list.append(el("li", { class: i + 1 === idea.index ? "current" : i + 1 < idea.index ? "done" : "" },
+        el("button", { class: "idea-move", onclick: () => { pauseIdea(); idea.index = i + 1; render(); } },
+          el("strong", {}, ply.label), el("span", { class: "muted" }, ` · ${mover}`),
+          i + 1 === idea.index ? el("span", { class: "sub" }, ply.description) : null)));
+    });
+    box.append(list);
+    if (idea.index === line.length) {
+      box.append(el("p", { class: "callout" },
+        `That's the idea: after ${m.best_san} and this line, the engine rates the position ${m.eval_before.text} — compared with ${m.eval_after.text} after the move that was played (${m.san}). Plus is good for White, minus for Black.`));
+    }
+  }
+  return box;
+}
+
+function renderIdea(m) {
+  const line = m.best_line_moves;
+  const i = idea.index;
+  const kind = (ply) => (ply.color === m.color ? "best" : "reply");
+  if (i === 0) {
+    renderBoard(m.fen_before, null, [[line[0].uci, "best"]]);
+    $("#caption").textContent = `The idea behind ${m.best_san}. Press ▶ to play it out.`;
+  } else {
+    const ply = line[i - 1];
+    renderBoard(ply.fen, [ply.uci.slice(0, 2), ply.uci.slice(2, 4)], [[ply.uci, kind(ply)]]);
+    $("#caption").textContent = `${i} of ${line.length}: ${ply.label} — ${ply.description}`;
+  }
+  renderEval(m.eval_before);
+  $("#idea-play").textContent = idea.timer ? "⏸" : "▶";
+  $("#idea-prev").disabled = i === 0;
+  $("#idea-next").disabled = i === line.length;
+}
+
+function startIdea() {
+  idea.index = 0;
+  playIdea();
+}
+
+function playIdea() {
+  const m = moves()[state.step - 1];
+  if (!m || !m.best_line_moves.length) return;
+  if (idea.index === null || idea.index >= m.best_line_moves.length) idea.index = 0;
+  stopIdea();
+  idea.timer = setInterval(() => {
+    idea.index += 1;
+    if (idea.index >= m.best_line_moves.length) stopIdea();
+    render();
+  }, IDEA_DELAY_MS);
+  render();
+}
+
+function stopIdea() {
+  clearInterval(idea.timer);
+  idea.timer = null;
+}
+
+function pauseIdea() {
+  stopIdea();
+  render();
+}
+
+function stepIdea(delta) {
+  const m = moves()[state.step - 1];
+  stopIdea();
+  idea.index = Math.max(0, Math.min(m.best_line_moves.length, idea.index + delta));
+  render();
+}
+
+function closeIdea() {
+  stopIdea();
+  idea.index = null;
   render();
 }
 
@@ -425,13 +529,32 @@ function nextMistake() {
 }
 
 $("#prev").addEventListener("click", () => go(state.step - 1));
+$("#idea-start").addEventListener("click", () => stepIdea(-99));
+$("#idea-prev").addEventListener("click", () => stepIdea(-1));
+$("#idea-play").addEventListener("click", () => (idea.timer ? pauseIdea() : playIdea()));
+$("#idea-next").addEventListener("click", () => stepIdea(1));
+$("#idea-close").addEventListener("click", closeIdea);
 $("#next").addEventListener("click", () => go(state.step + 1));
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
 
 document.addEventListener("keydown", (e) => {
   if ($("#screen-walk").hidden) return;
   if (e.target instanceof Element && e.target.matches("textarea, input, select")) return;
+  if (idea.index !== null) {
+    const ideaKeys = {
+      ArrowLeft: () => stepIdea(-1),
+      ArrowRight: () => stepIdea(1),
+      " ": () => (idea.timer ? pauseIdea() : playIdea()),
+      Escape: closeIdea,
+    };
+    if (ideaKeys[e.key]) {
+      e.preventDefault();
+      ideaKeys[e.key]();
+      return;
+    }
+  }
   const actions = {
+    w: () => { const m = moves()[state.step - 1]; if (m && m.best_line_moves.length) startIdea(); },
     ArrowLeft: () => go(state.step - 1),
     ArrowRight: () => go(state.step + 1),
     Home: () => go(0),

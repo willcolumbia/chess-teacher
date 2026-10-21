@@ -76,6 +76,7 @@
             <svg id="arrows" class="arrows" viewBox="0 0 8 8" aria-hidden="true">
               <defs>
                 <marker id="head-best" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-best-head"/></marker>
+                <marker id="head-reply" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-reply-head"/></marker>
                 <marker id="head-played" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-played-head"/></marker>
               </defs>
               <g id="arrow-layer"></g>
@@ -86,6 +87,13 @@
         <div class="board-tabs" id="board-tabs">
           <button data-view="played" class="tab">Move played</button>
           <button data-view="better" class="tab">Better move</button>
+        </div>
+        <div class="idea-controls" id="idea-controls" hidden>
+          <button id="idea-start" title="Back to the start of the idea">⏮</button>
+          <button id="idea-prev" title="Previous (←)">◀</button>
+          <button id="idea-play" class="primary" title="Play / pause (space)">▶</button>
+          <button id="idea-next" title="Next (→)">▶|</button>
+          <button id="idea-close" title="Close (Esc)">✕ Close</button>
         </div>
         <p class="caption muted" id="caption"></p>
       </div>
@@ -98,7 +106,7 @@
       <span id="counter" class="muted"></span>
       <button id="next" class="primary">Next ▶</button>
     </nav>
-    <p class="keys muted">Keys: ← → step · n next mistake · b better move · f flip board</p>
+    <p class="keys muted">Keys: ← → step · n next mistake · b better move · w show why · f flip board · in "show why": ← → space Esc</p>
   </section>
 
   <script src="/static/app.js"></script>

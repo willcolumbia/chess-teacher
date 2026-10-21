@@ -16,6 +16,7 @@
   --blunder: #d0342c;
   --arrow-best: rgba(46, 139, 87, 0.85);
   --arrow-played: rgba(208, 52, 44, 0.8);
+  --arrow-reply: rgba(48, 110, 200, 0.8);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -150,8 +151,19 @@ button:disabled { opacity: 0.5; cursor: default; }
 .arrow-played { stroke: var(--arrow-played); }
 .arrow-best-head { fill: var(--arrow-best); }
 .arrow-played-head { fill: var(--arrow-played); }
+.arrow-reply { stroke: var(--arrow-reply); }
+.arrow-reply-head { fill: var(--arrow-reply); }
 
 .board-tabs { display: flex; gap: 6px; margin-top: 8px; }
+.idea-controls { display: flex; gap: 6px; margin-top: 8px; }
+.idea-controls button { min-width: 44px; }
+.idea .row { margin-top: 10px; }
+.idea-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.idea-list li { margin: 0; }
+.idea-move { width: 100%; text-align: left; border-color: transparent; background: none; padding: 5px 8px; }
+.idea-list li.done .idea-move { opacity: 0.6; }
+.idea-list li.current .idea-move { background: var(--bg); border-color: var(--accent); }
+.idea-move .sub { display: block; font-size: 13px; color: var(--text); margin-top: 2px; }
 .tab.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .caption { margin-top: 8px; font-size: 13px; }
 
