@@ -19,13 +19,21 @@ To use a Stockfish you already have, set `STOCKFISH_PATH=/path/to/stockfish`.
 ## Use
 
 ```bash
-.venv/bin/python -m chess_teacher   # then open http://127.0.0.1:5000
+.venv/bin/python -m chess_teacher   # then open http://localhost:5000
 ```
 
 1. On Chess.com, open the game → **Share** → **PGN** → copy.
-2. Paste it in, enter your username (so it knows which side you were), and click **Analyze game**.
-3. Step through the game with the arrow keys. Press **n** to jump to your next mistake.
-   - Red arrow: the move you played. Green arrow: the engine's best move.
+2. Paste it in (optionally with your username) and click **Analyze my game**.
+3. Pick which side you played, if it didn't recognise your username.
+4. Walk through the game one move at a time. Every move — yours and your opponent's — gets:
+   - **What the move does** (develops, captures, attacks, defends, forks, …)
+   - **Verdict** with the evaluation before and after
+   - **Why it's a problem** for inaccuracies, mistakes and blunders
+   - **What you could have played**, shown on the board with arrows (red = played, green = better)
+   - **What to watch for next** / **your best reply**
+5. Finish on a summary of your accuracy and the patterns in your mistakes.
+
+Keys: ← → step · n next mistake · b toggle better move · f flip board.
 
 Moves are labelled by how much they dropped your winning chances (Lichess model):
 inaccuracy ≥ 10%, mistake ≥ 20%, blunder ≥ 30% (or walking into a forced mate).

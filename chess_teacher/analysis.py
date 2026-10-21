@@ -11,7 +11,8 @@ import chess.pgn
 
 from .engine import find_stockfish
 from .explain import Explainer, MoveContext, get_explainer
-from .explain.rules import line_san
+from .explain.describe import describe_move
+from .explain.rules import describe_tactic, line_san
 
 DEFAULT_DEPTH = 16
 
@@ -154,6 +155,11 @@ def analyze_pgn(
             )
             explanation, themes = result.text, result.themes
 
+        after = board.copy(stack=False)
+        after.push(move)
+        reply = reply_line[0] if reply_line else None
+        reply_tactic = describe_tactic(after, reply) if reply else None
+
         moves.append(
             {
                 "ply": i + 1,
@@ -162,9 +168,15 @@ def analyze_pgn(
                 "san": board.san(move),
                 "uci": move.uci(),
                 "fen_before": board.fen(),
+                "fen_after": after.fen(),
+                "description": describe_move(board, move),
                 "best_san": board.san(best_move),
                 "best_uci": best_move.uci(),
                 "best_line": line_san(board, best_line, plies=10),
+                "best_description": describe_move(board, best_move) if best_move != move else None,
+                "reply_san": after.san(reply) if reply else None,
+                "reply_note": reply_tactic[0] if reply_tactic else None,
+                "reply_line": line_san(after, reply_line, plies=6),
                 "classification": label,
                 "win_drop": round(drop, 1),
                 "accuracy": round(move_accuracy(drop), 1),
