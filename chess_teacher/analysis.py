@@ -205,7 +205,6 @@ def analyze_pgn(
                     line_details(board, [move] + reply_line, plies=IDEA_PLIES + 1) if label in EXPLAINED else []
                 ),
                 "reply_san": after.san(reply) if reply else None,
-                "reply_uci": reply.uci() if reply else None,
                 "reply_note": reply_tactic[0] if reply_tactic else None,
                 "reply_line": line_san(after, reply_line, plies=6),
                 "classification": label,
