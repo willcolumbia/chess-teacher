@@ -35,23 +35,35 @@ def settle(
 
     Plays at least `min_plies` moves (if available), then keeps going until the
     next move is not a capture, so a half-finished exchange isn't counted.
-    Returns (change, plies played, pieces of `color` captured on the way).
+    Returns (change, plies played, pieces of `color` lost on the way that were
+    not traded for a piece of equal value).
     """
     b = board.copy(stack=False)
     start = material_balance(b, color)
-    change, plies, lost, settled_lost = 0, 0, [], []
+    change, plies, lost, won, settled = 0, 0, [], [], ([], [])
     for i, move in enumerate(line):
         if not b.is_legal(move):
             break
-        if b.turn != color and b.is_capture(move):
-            lost.append(captured_piece(b, move))
+        if b.is_capture(move):
+            (lost if b.turn != color else won).append(captured_piece(b, move))
         b.push(move)
         nxt = line[i + 1] if i + 1 < len(line) else None
         if nxt is None or not b.is_capture(nxt):
-            change, plies, settled_lost = material_balance(b, color) - start, i + 1, list(lost)
+            change, plies, settled = material_balance(b, color) - start, i + 1, (list(lost), list(won))
             if plies >= min_plies:
                 break
-    return change, plies, settled_lost
+    return change, plies, untraded(*settled)
+
+
+def untraded(lost: List[chess.Piece], won: List[chess.Piece]) -> List[chess.Piece]:
+    """Pieces in `lost` left over after cancelling each against a `won` piece of equal value."""
+    remaining = list(lost)
+    for piece in won:
+        for i, mine in enumerate(remaining):
+            if PIECE_VALUES[mine.piece_type] == PIECE_VALUES[piece.piece_type]:
+                del remaining[i]
+                break
+    return remaining
 
 
 def settled_material_change(
@@ -150,7 +162,7 @@ def describe_tactic(board: chess.Board, move: chess.Move) -> Optional[Tuple[str,
         if (
             target.piece_type == chess.KING
             or PIECE_VALUES[target.piece_type] > PIECE_VALUES[mover.piece_type]
-            or undefended
+            or (undefended and target.piece_type != chess.PAWN)
         ):
             targets.append(target)
     if len(targets) >= 2:
@@ -165,13 +177,16 @@ def describe_tactic(board: chess.Board, move: chess.Move) -> Optional[Tuple[str,
         if after.is_pinned(them, target_sq) and not board.is_pinned(them, target_sq):
             return f"pinning the {name(target)} on {sq(target_sq)} to the king", "pin"
 
-    if board.is_capture(move):
-        victim = captured_piece(board, move)
-        if not board.is_attacked_by(them, move.to_square):
-            return f"winning the undefended {name(victim)}", "free-piece"
+    victim = captured_piece(board, move) if board.is_capture(move) else None
+    if victim and not board.is_attacked_by(them, move.to_square):
+        return f"winning the undefended {name(victim)}", "free-piece"
 
     if after.is_check():
+        if move.to_square not in after.checkers():
+            return "with a discovered check", "discovered-check"
         return "with check", "check"
+    if victim and victim.piece_type != chess.PAWN:
+        return f"taking the {name(victim)}", "capture"
     return None
 
 
@@ -187,7 +202,8 @@ class RuleExplainer(Explainer):
         themes: List[str] = []
 
         problem = (
-            self._allowed_mate(ctx, after, played)
+            self._stalemate(ctx, after, played)
+            or self._allowed_mate(ctx, after, played)
             or self._missed_mate(ctx)
             or self._lost_material(ctx, after, played)
             or self._positional(ctx, played)
@@ -219,10 +235,20 @@ class RuleExplainer(Explainer):
 
     # Each rule returns (sentence, theme) or None.
 
+    def _stalemate(self, ctx, after, played):
+        if after.is_stalemate():
+            return (
+                f"{played} stalemates your opponent: they have no legal moves and aren't in "
+                "check, so the game is a draw. Always check that the opponent has a move left "
+                "when you are winning.",
+                "stalemate",
+            )
+        return None
+
     def _allowed_mate(self, ctx, after, played):
         sa = ctx.score_after
         if sa.is_mate() and sa != chess.engine.MateGiven and sa.mate() < 0:
-            line = line_san(after, ctx.reply_line, plies=2 * -sa.mate())
+            line = line_san(after, ctx.reply_line, plies=min(2 * -sa.mate(), 8))
             return f"{played} allows a forced mate in {-sa.mate()}: {line}.", "allows-mate"
         return None
 
@@ -246,6 +272,23 @@ class RuleExplainer(Explainer):
         index, capture, piece = hit
         where = capture.to_square
         line = line_san(after, ctx.reply_line, plies=max(plies, index + 1, 2))
+        reply = ctx.reply_line[0]
+        reply_san = after.san(reply)
+        reply_tactic = describe_tactic(after, reply)
+        if index == 0 and ctx.move.from_square in chess.SquareSet(chess.between(capture.from_square, where)):
+            moved = ctx.board.piece_at(ctx.move.from_square)
+            return (
+                f"{played} moves your {name(moved)} out of the way and opens the line to your "
+                f"{name(piece)} on {sq(where)} — {reply_san} wins it ({line}).{net}",
+                "discovered-attack",
+            )
+        if reply_tactic and reply_tactic[1] in ("fork", "pin", "discovered-check"):
+            return (
+                f"{played} allows {reply_san}, {reply_tactic[0]} ({line}).{net}",
+                reply_tactic[1],
+            )
+        attacker = after.piece_at(capture.from_square)
+        cheap_attacker = attacker and PIECE_VALUES[attacker.piece_type] < PIECE_VALUES[piece.piece_type]
         if index == 0 and where == ctx.move.to_square:
             if not after.is_attacked_by(me, where):
                 return (
@@ -253,23 +296,21 @@ class RuleExplainer(Explainer):
                     f"the opponent simply takes it ({line}).{net}",
                     "hanging-piece",
                 )
-            attacker = after.piece_at(capture.from_square)
-            return (
-                f"{played} puts your {name(piece)} on {sq(where)} where the "
-                f"{name(attacker)} can take it ({line}).{net}",
-                "hanging-piece",
-            )
+            if cheap_attacker:
+                return (
+                    f"{played} puts your {name(piece)} on {sq(where)} where the cheaper "
+                    f"{name(attacker)} can take it ({line}).{net}",
+                    "hanging-piece",
+                )
         if index == 0 and ctx.board.piece_at(where) == piece and ctx.board.is_attacked_by(not me, where):
             return (
                 f"You overlooked the threat to your {name(piece)} on {sq(where)}. "
                 f"After {played}, the opponent wins it: {line}.{net}",
                 "ignored-threat",
             )
-        reply_tactic = describe_tactic(after, ctx.reply_line[0]) if ctx.reply_line else None
-        how = f" by {reply_tactic[0]}" if reply_tactic else ""
         return (
-            f"After {played}, the opponent wins your {name(piece)}{how}: {line}.{net}",
-            reply_tactic[1] if reply_tactic else "loses-material",
+            f"After {played}, the opponent wins material: {line}.{net}",
+            "loses-material",
         )
 
     def _positional(self, ctx, played):
@@ -279,9 +320,15 @@ class RuleExplainer(Explainer):
             piece.piece_type == chess.KING
             and not board.is_castling(move)
             and board.has_castling_rights(ctx.mover)
+            and board.piece_type_at(ctx.best_move.from_square) != chess.KING
         ):
             return (
                 f"{played} gives up the right to castle and leaves your king exposed.",
+                "king-safety",
+            )
+        if piece.piece_type == chess.KING and board.piece_type_at(ctx.best_move.from_square) == chess.KING:
+            return (
+                f"{played} puts your king on a worse square — {board.san(ctx.best_move)} keeps it safer.",
                 "king-safety",
             )
         if piece.piece_type == chess.QUEEN and board.fullmove_number <= 8:

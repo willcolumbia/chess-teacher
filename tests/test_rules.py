@@ -57,3 +57,53 @@ def test_hanging_piece_explanation():
     assert "hanging-piece" in result.themes
     assert "knight on d5" in result.text
     assert "Better was Kd2" in result.text
+
+
+def make_ctx(fen, played, best_line, reply_line, before=200, after=-100):
+    board = chess.Board(fen)
+    move = board.parse_san(played)
+    after_board = board.copy()
+    after_board.push(move)
+    best = moves(board, *best_line)
+    return MoveContext(
+        board=board,
+        move=move,
+        best_move=best[0],
+        best_line=best,
+        reply_line=moves(after_board, *reply_line),
+        score_before=chess.engine.Cp(before),
+        score_after=chess.engine.Cp(after),
+        classification="blunder",
+    )
+
+
+def test_trades_are_not_listed_as_losses():
+    # White loses a bishop and a pawn but the queens are traded on the way.
+    board = chess.Board("4k3/8/8/8/8/8/8/4K3 w - - 0 1")
+    lost = [chess.Piece(chess.QUEEN, True), chess.Piece(chess.BISHOP, True), chess.Piece(chess.PAWN, True)]
+    from chess_teacher.explain.rules import untraded
+    left = untraded(lost, [chess.Piece(chess.QUEEN, False)])
+    assert pieces_phrase(left) == "a bishop and a pawn"
+
+
+def test_stalemate_explained():
+    ctx = make_ctx("k7/2K5/8/8/8/8/8/1Q6 w - - 0 1", "Qb6", ["Qb7#"], [], before=10000, after=0)
+    result = RuleExplainer().explain(ctx)
+    assert result.themes[0] == "stalemate"
+    assert "draw" in result.text
+
+
+def test_moving_piece_off_a_line_is_explained():
+    # The knight on e4 shields the rook on e1 from the queen on e5.
+    ctx = make_ctx("4k3/8/8/4q3/4N3/8/8/4R1K1 w - - 0 1", "Nc3", ["Kg2"], ["Qxe1+"])
+    result = RuleExplainer().explain(ctx)
+    assert result.themes[0] == "discovered-attack"
+    assert "rook on e1" in result.text
+
+
+def test_walking_into_a_fork_is_explained():
+    # Black's rook goes to d8 where Nxf7+ forks king and rook.
+    ctx = make_ctx("2r5/5p2/3k4/6N1/8/8/8/5K2 b - - 0 1", "Rd8", ["Ke7"], ["Nxf7", "Kd7", "Nxd8"])
+    result = RuleExplainer().explain(ctx)
+    assert result.themes[0] == "fork"
+    assert "king and rook" in result.text

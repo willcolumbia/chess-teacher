@@ -48,8 +48,14 @@ def classify(
     """`before`/`after` are from the mover's point of view."""
     if move == best_move:
         return "best"
-    # Walking into a forced mate is a blunder even if the position was already lost.
+    # Walking into a forced mate is serious even in a bad position (Lichess rule),
+    # but less so when the position was already hopeless.
     if is_mated_soon(after) and not is_mated_soon(before):
+        cp = before.score()
+        if cp is not None and cp < -999:
+            return "inaccuracy"
+        if cp is not None and cp < -700:
+            return "mistake"
         return "blunder"
     for threshold, label in THRESHOLDS:
         if drop >= threshold:
