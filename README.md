@@ -24,9 +24,13 @@ To use a Stockfish you already have, set `STOCKFISH_PATH=/path/to/stockfish`.
 
 The site has two pages:
 
-- **Home** (`/`): a board you can play on, moving pieces for both sides by clicking or dragging.
-  Only legal moves are allowed. Includes undo, new game, flip, and **Analyze this game**,
-  which sends the game to the Analysis page.
+- **Home** (`/`): a board you can play on by clicking or dragging pieces. Only legal moves are allowed.
+  - **Two players**: move both sides.
+  - **Play vs Stockfish**: pick White, Black or Random and set the engine's strength from 400 to 3000 Elo.
+    From 1320 up, Stockfish limits its own strength; below that (Stockfish's minimum) the app weakens it
+    with a shallow search and some randomness, so those ratings are approximate.
+  - Undo (takes back your move and Stockfish's reply), new game, flip, and **Analyze this game**,
+    which sends the game to the Analysis page.
 - **Analysis** (`/analysis`): a move-by-move review of a finished game:
 
 1. On Chess.com, open the game → **Share** → **PGN** → copy.
@@ -57,7 +61,8 @@ chess_teacher/
   explain/
     base.py          # MoveContext / Explainer interface
     rules.py         # rule-based explanations (hanging pieces, forks, pins, missed mates, ...)
-  web.py             # Flask pages, analysis jobs, and the /api/play legal-move endpoint
+  opponent.py        # Stockfish as an opponent at an adjustable Elo
+  web.py             # Flask pages, analysis jobs, /api/play (legal moves) and /api/engine-move
   static/
     home.html/.js    # playable board (Home)
     analysis.html/.js  # move-by-move review (Analysis)

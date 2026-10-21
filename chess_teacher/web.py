@@ -1,6 +1,7 @@
 """Local web app.
 
-/          a playable board (moves are checked by the /api/play endpoint)
+/          a playable board, for two players or against Stockfish
+           (moves are checked by /api/play; the engine answers via /api/engine-move)
 /analysis  paste a PGN; analysis runs in a background thread and the page polls for it
 """
 from __future__ import annotations
@@ -15,6 +16,7 @@ import chess
 import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
 
+from . import opponent
 from .analysis import DEFAULT_DEPTH, analyze_pgn, read_game
 
 STATIC = Path(__file__).parent / "static"
@@ -99,24 +101,40 @@ def game_status(board: chess.Board) -> str:
     return f"{side} to move"
 
 
+def replay(moves) -> chess.Board:
+    """Play UCI `moves` from the start position. Raises ValueError on a bad or illegal move."""
+    board = chess.Board()
+    for uci in moves or []:
+        try:
+            move = chess.Move.from_uci(uci)
+        except ValueError:
+            raise ValueError(f"Bad move {uci!r}.")
+        if move not in board.legal_moves:
+            raise ValueError(f"Illegal move {uci!r}.")
+        board.push(move)
+    return board
+
+
 @app.post("/api/play")
 def play():
     """Replay `moves` (UCI) from the start position; return the position and its legal moves."""
     body = request.get_json(silent=True) or {}
-    board = chess.Board()
+    try:
+        board = replay(body.get("moves"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     sans = []
-    for uci in body.get("moves") or []:
-        try:
-            move = chess.Move.from_uci(uci)
-        except ValueError:
-            return jsonify({"error": f"Bad move {uci!r}."}), 400
-        if move not in board.legal_moves:
-            return jsonify({"error": f"Illegal move {uci!r}."}), 400
-        sans.append(board.san(move))
-        board.push(move)
+    walk = chess.Board()
+    for move in board.move_stack:
+        sans.append(walk.san(move))
+        walk.push(move)
 
     game = chess.pgn.Game.from_board(board)
     game.headers["Event"] = "Casual game"
+    for side in ("White", "Black"):
+        name = body.get(side.lower())
+        if isinstance(name, str) and name.strip():
+            game.headers[side] = name.strip()[:60]
     game.headers["Date"] = date.today().strftime("%Y.%m.%d")
     over = board.is_game_over(claim_draw=True)
     if over:
@@ -132,3 +150,18 @@ def play():
             "pgn": str(game),
         }
     )
+
+
+@app.post("/api/engine-move")
+def engine_move():
+    """Stockfish's reply to `moves` (UCI), playing at roughly `elo`."""
+    body = request.get_json(silent=True) or {}
+    try:
+        board = replay(body.get("moves"))
+        elo = int(body.get("elo") or 1500)
+        move = opponent.choose_move(board, elo)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"uci": move.uci(), "elo": max(opponent.MIN_ELO, min(opponent.MAX_ELO, elo))})

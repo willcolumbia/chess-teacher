@@ -32,3 +32,18 @@ def test_checkmate_ends_the_game():
 def test_pages_are_served():
     assert client.get("/").status_code == 200
     assert client.get("/analysis").status_code == 200
+
+
+def test_engine_moves_are_legal_at_every_strength():
+    import chess
+
+    from chess_teacher.web import replay
+
+    for elo in (400, 900, 1500, 2800):
+        data = client.post("/api/engine-move", json={"moves": ["e2e4"], "elo": elo}).get_json()
+        assert chess.Move.from_uci(data["uci"]) in replay(["e2e4"]).legal_moves, elo
+
+
+def test_engine_refuses_finished_games():
+    res = client.post("/api/engine-move", json={"moves": ["f2f3", "e7e5", "g2g4", "d8h4"], "elo": 1500})
+    assert res.status_code == 400

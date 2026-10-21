@@ -15,6 +15,25 @@
 
   <main class="home">
     <div class="play">
+      <div class="setup">
+        <div class="segmented" role="group" aria-label="Opponent">
+          <button data-mode="human">Two players</button>
+          <button data-mode="engine">Play vs Stockfish</button>
+        </div>
+        <div id="engine-settings" class="row" hidden>
+          <label class="elo">Engine strength (Elo)
+            <span class="row"><input type="range" id="elo" min="400" max="3000" step="50"> <strong id="elo-value"></strong></span>
+          </label>
+          <label>You play
+            <select id="color">
+              <option value="white">White</option>
+              <option value="black">Black</option>
+              <option value="random">Random</option>
+            </select>
+          </label>
+        </div>
+        <p id="opponent" class="muted small"></p>
+      </div>
       <div class="board-area">
         <div id="board" class="board playable" aria-label="Chess board"></div>
         <div id="promotion" class="promotion" hidden></div>

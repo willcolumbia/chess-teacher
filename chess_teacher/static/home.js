@@ -1,7 +1,8 @@
 "use strict";
 
-// A playable board for both sides. The server (/api/play) replays the move list,
-// so it decides what's legal, and returns the position and the next legal moves.
+// A playable board: two players on one screen, or you against Stockfish.
+// The server (/api/play) replays the move list, so it decides what's legal, and
+// returns the position and the next legal moves. /api/engine-move picks Stockfish's reply.
 
 const $ = (sel) => document.querySelector(sel);
 const boardEl = $("#board");
@@ -15,8 +16,51 @@ const state = {
   status: "",
   selected: null,
   flipped: false,
+  turn: "white",
+  gameOver: false,
+  // Opponent settings
+  mode: "human", // "human" (two players) or "engine"
+  elo: 1200,
+  colorChoice: "white", // "white", "black" or "random"
+  myColor: "white", // the side you actually play this game
+  thinking: false,
 };
 let drag = null; // { from, ghost, moved }
+let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
+
+const STOCKFISH_MIN_ELO = 1320; // below this the engine's strength is our approximation
+
+function saveSettings() {
+  try {
+    const { mode, elo, colorChoice, myColor } = state;
+    localStorage.setItem("homeSettings", JSON.stringify({ mode, elo, colorChoice, myColor }));
+  } catch (e) {
+    // settings just won't be remembered
+  }
+}
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("homeSettings") || "{}");
+    if (saved.mode === "human" || saved.mode === "engine") state.mode = saved.mode;
+    if (Number.isFinite(saved.elo)) state.elo = Math.max(400, Math.min(3000, saved.elo));
+    if (["white", "black", "random"].includes(saved.colorChoice)) state.colorChoice = saved.colorChoice;
+    if (["white", "black"].includes(saved.myColor)) state.myColor = saved.myColor;
+  } catch (e) {
+    // use the defaults
+  }
+  state.flipped = state.mode === "engine" && state.myColor === "black";
+}
+
+const vsEngine = () => state.mode === "engine";
+const enginesTurn = () => vsEngine() && !state.gameOver && state.turn !== state.myColor;
+const canMove = () => !state.gameOver && !state.thinking && !enginesTurn();
+
+function players() {
+  if (!vsEngine()) return {};
+  const engine = `Stockfish (${state.elo})`;
+  return state.myColor === "white" ? { white: "You", black: engine } : { white: engine, black: "You" };
+}
 
 function saveMoves() {
   try {
@@ -39,14 +83,55 @@ async function load(moves) {
   const res = await fetch("/api/play", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ moves }),
+    body: JSON.stringify({ moves, ...players() }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Could not play that move.");
-  Object.assign(state, { moves, fen: data.fen, legal: data.legal, sans: data.sans, pgn: data.pgn, status: data.status });
+  Object.assign(state, {
+    moves,
+    fen: data.fen,
+    legal: data.legal,
+    sans: data.sans,
+    pgn: data.pgn,
+    status: data.status,
+    turn: data.turn,
+    gameOver: data.game_over,
+  });
   state.selected = null;
   saveMoves();
   render();
+  if (enginesTurn()) engineMove();
+}
+
+async function engineMove() {
+  const request = ++engineRequest;
+  state.thinking = true;
+  render();
+  try {
+    const started = Date.now();
+    const res = await fetch("/api/engine-move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moves: state.moves, elo: state.elo }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Stockfish couldn't move.");
+    await new Promise((r) => setTimeout(r, Math.max(0, 350 - (Date.now() - started)))); // don't reply instantly
+    if (request !== engineRequest) return; // undo or new game happened meanwhile
+    state.thinking = false;
+    await load([...state.moves, data.uci]);
+  } catch (err) {
+    if (request !== engineRequest) return;
+    state.thinking = false;
+    render();
+    showError(err.message);
+  }
+}
+
+function statusText() {
+  if (!vsEngine() || state.gameOver) return state.status;
+  if (state.thinking || enginesTurn()) return "Stockfish is thinking…";
+  return state.status.includes("in check") ? "Your move — you're in check" : "Your move";
 }
 
 function targetsFrom(square) {
@@ -61,8 +146,16 @@ function render() {
     selected: state.selected,
     targets: state.selected ? targetsFrom(state.selected) : [],
   });
-  $("#status").textContent = state.status;
+  $("#status").textContent = statusText();
   $("#undo").disabled = state.moves.length === 0;
+  for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);
+  $("#engine-settings").hidden = !vsEngine();
+  $("#elo").value = state.elo;
+  $("#elo-value").textContent = state.elo < STOCKFISH_MIN_ELO ? `≈${state.elo} (approximate)` : String(state.elo);
+  $("#color").value = state.colorChoice;
+  $("#opponent").textContent = vsEngine()
+    ? `You (${state.myColor}) vs Stockfish ${state.elo}`
+    : "Two players — move both sides";
   $("#to-analysis").disabled = state.moves.length === 0;
   $("#moves").textContent = state.sans
     .map((san, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${san}` : san))
@@ -130,7 +223,7 @@ function squareAt(x, y) {
 
 boardEl.addEventListener("pointerdown", (e) => {
   const sq = e.target.closest(".sq");
-  if (!sq || !$("#promotion").hidden) return;
+  if (!sq || !$("#promotion").hidden || !canMove()) return;
   const square = sq.dataset.square;
   showError("");
 
@@ -191,8 +284,55 @@ boardEl.addEventListener("pointercancel", (e) => endDrag(e, true));
 
 // ---------- Buttons ----------
 
-$("#undo").addEventListener("click", () => load(state.moves.slice(0, -1)).catch((err) => showError(err.message)));
-$("#reset").addEventListener("click", () => load([]).catch((err) => showError(err.message)));
+function undo() {
+  let back = 1;
+  if (vsEngine()) {
+    if (state.thinking) {
+      engineRequest++; // drop the pending reply
+      state.thinking = false;
+    } else if (state.turn === state.myColor && state.moves.length >= 2) {
+      back = 2; // take back Stockfish's reply and your move
+    }
+  }
+  load(state.moves.slice(0, -back)).catch((err) => showError(err.message));
+}
+
+function newGame() {
+  engineRequest++;
+  state.thinking = false;
+  if (vsEngine()) {
+    state.myColor = state.colorChoice === "random" ? (Math.random() < 0.5 ? "white" : "black") : state.colorChoice;
+    state.flipped = state.myColor === "black";
+  }
+  saveSettings();
+  showError("");
+  load([]).catch((err) => showError(err.message));
+}
+
+function confirmRestart() {
+  return state.moves.length === 0 || state.gameOver || confirm("Start a new game? The current game will be lost.");
+}
+
+$("#undo").addEventListener("click", undo);
+$("#reset").addEventListener("click", newGame);
+
+document.querySelectorAll("[data-mode]").forEach((b) =>
+  b.addEventListener("click", () => {
+    if (b.dataset.mode === state.mode || !confirmRestart()) return;
+    state.mode = b.dataset.mode;
+    newGame();
+  })
+);
+$("#color").addEventListener("change", (e) => {
+  if (!confirmRestart()) return render();
+  state.colorChoice = e.target.value;
+  newGame();
+});
+$("#elo").addEventListener("input", (e) => {
+  state.elo = Number(e.target.value);
+  saveSettings();
+  render();
+});
 $("#flip").addEventListener("click", () => {
   state.flipped = !state.flipped;
   render();
@@ -206,4 +346,5 @@ $("#to-analysis").addEventListener("click", () => {
   location.href = "/analysis";
 });
 
+loadSettings();
 load(savedMoves()).catch(() => load([]).catch((err) => showError(err.message)));

@@ -225,3 +225,15 @@ button:disabled { opacity: 0.5; cursor: default; }
 .move-accuracy .meter { width: 120px; height: 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
 .move-accuracy .fill { height: 100%; }
 .small { font-size: 13px; }
+
+/* Home: opponent setup */
+.setup { margin-bottom: 12px; }
+.setup label { margin-top: 10px; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.segmented button { border: 0; border-radius: 0; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.active { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.elo { flex: 1; min-width: 220px; }
+.elo .row { align-items: center; flex-wrap: nowrap; }
+.elo input[type="range"] { flex: 1; accent-color: var(--accent); }
+.setup #opponent { margin: 8px 0 0; }
