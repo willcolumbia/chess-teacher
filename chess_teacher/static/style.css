@@ -17,6 +17,7 @@
   --arrow-best: rgba(46, 139, 87, 0.85);
   --arrow-played: rgba(208, 52, 44, 0.8);
   --arrow-reply: rgba(48, 110, 200, 0.8);
+  --arrow-neutral: rgba(90, 90, 90, 0.75);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -84,6 +85,7 @@ button {
 }
 button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button.warn { background: var(--blunder); color: #fff; border-color: var(--blunder); font-weight: 600; }
 button.big { width: 100%; margin-top: 18px; padding: 12px; font-size: 16px; }
 button:disabled { opacity: 0.5; cursor: default; }
 
@@ -153,6 +155,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .arrow-played-head { fill: var(--arrow-played); }
 .arrow-reply { stroke: var(--arrow-reply); }
 .arrow-reply-head { fill: var(--arrow-reply); }
+.arrow-neutral { stroke: var(--arrow-neutral); }
+.arrow-neutral-head { fill: var(--arrow-neutral); }
 
 .board-tabs { display: flex; gap: 6px; margin-top: 8px; }
 .idea-controls { display: flex; gap: 6px; margin-top: 8px; }

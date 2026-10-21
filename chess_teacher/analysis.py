@@ -200,6 +200,10 @@ def analyze_pgn(
                 "best_line": line_san(board, best_line, plies=10),
                 "best_description": describe_move(board, best_move) if best_move != move else None,
                 "best_line_moves": line_details(board, best_line) if best_move != move else [],
+                # The played move followed by the engine's best play from there.
+                "punish_line_moves": (
+                    line_details(board, [move] + reply_line, plies=IDEA_PLIES + 1) if label in EXPLAINED else []
+                ),
                 "reply_san": after.san(reply) if reply else None,
                 "reply_note": reply_tactic[0] if reply_tactic else None,
                 "reply_line": line_san(after, reply_line, plies=6),

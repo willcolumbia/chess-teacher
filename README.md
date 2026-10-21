@@ -31,10 +31,11 @@ To use a Stockfish you already have, set `STOCKFISH_PATH=/path/to/stockfish`.
    - **Why it's a problem** for inaccuracies, mistakes and blunders
    - **What you could have played**, shown on the board with arrows (red = played, green = better)
    - **Show why it's better**: plays out the engine's line on the board (up to 5 moves each), explaining each move
+   - **Show why it's a mistake** (or **how to punish it**, for your opponent's mistakes): plays your move and what the engine expects to follow
    - **What to watch for next** / **your best reply**
 5. Finish on a summary of your accuracy and the patterns in your mistakes.
 
-Keys: ← → step · n next mistake · b toggle better move · w show why · f flip board.
+Keys: ← → step · n next mistake · b toggle better move · w show why better · x show why a mistake · f flip board.
 While showing why: ← → step · space play/pause · Esc close.
 
 Moves are labelled by how much they dropped your winning chances (Lichess model):

@@ -21,8 +21,8 @@ const $ = (sel) => document.querySelector(sel);
 
 // step 0 = intro, steps 1..n = moves, step n+1 = summary.
 const state = { result: null, step: 0, view: "played", flipped: false, myColor: null };
-// "Show why" playback of the better line: idea = null (off) or 0..line length; 0 is the starting position.
-const idea = { index: null, timer: null };
+// "Show why" playback: idea.index = null (off) or 0..line length; 0 is the starting position.
+const idea = { index: null, timer: null, kind: null };
 const IDEA_DELAY_MS = 1600;
 
 function el(tag, attrs = {}, ...children) {
@@ -290,7 +290,11 @@ function moveCard(m) {
   ];
 
   if (bad && m.explanation) {
-    nodes.push(el("h3", {}, "Why it's a problem"), el("p", { class: "callout c-warn" }, m.explanation));
+    nodes.push(
+      el("h3", {}, "Why it's a problem"),
+      el("p", { class: "callout c-warn" }, m.explanation),
+      ideaSection(m, yours, "punish")
+    );
   }
 
   if (m.best_uci !== m.uci) {
@@ -298,7 +302,7 @@ function moveCard(m) {
       el("h3", {}, yours ? "What you could have played" : "What they should have played"),
       el("p", {}, el("strong", {}, m.best_san), m.best_description ? ` — ${lowerFirst(m.best_description)}` : ""),
       m.best_line ? el("p", { class: "line" }, `Engine line: ${m.best_line}`) : null,
-      ideaSection(m, yours)
+      ideaSection(m, yours, "better")
     );
   }
 
@@ -362,72 +366,104 @@ function setView(view) {
   render();
 }
 
-// ---------- "Show why": play out the better line ----------
+// ---------- "Show why": play out a line on the board ----------
+// Two kinds of line:
+//   "better": the engine's best move and what follows it.
+//   "punish": the move actually played and how the engine expects the game to go from there.
 
-function ideaSection(m, yours) {
-  const line = m.best_line_moves || [];
+const IDEA_KINDS = {
+  better: {
+    moves: (m) => m.best_line_moves || [],
+    eval: (m) => m.eval_before,
+    arrow: (m, ply) => (ply.color === m.color ? "best" : "reply"),
+    button: (m) => `▶ Show why ${m.best_san} is better`,
+    intro: (m) => `The idea behind ${m.best_san}. Press ▶ to play it out.`,
+    outro: (m) => `That's the idea: after ${m.best_san} and this line, the engine rates the position ${m.eval_before.text}, compared with ${m.eval_after.text} after the move that was played (${m.san}).`,
+  },
+  punish: {
+    moves: (m) => m.punish_line_moves || [],
+    eval: (m) => m.eval_after,
+    arrow: (m, ply, i) => (i === 0 ? "played" : ply.color === m.color ? "neutral" : "reply"),
+    button: (m) => (isMine(m) ? `▶ Show why ${m.san} is a ${m.classification}` : `▶ Show how to punish ${m.san}`),
+    intro: (m) => `What happens after ${m.san}? Press ▶ to see how the game could go.`,
+    outro: (m) => `After ${m.san} and this line, the engine rates the position ${m.eval_after.text}. With ${m.best_san} instead it would have been ${m.eval_before.text}.`,
+  },
+};
+
+function ideaLine(m) {
+  return idea.kind ? IDEA_KINDS[idea.kind].moves(m) : [];
+}
+
+function ideaSection(m, yours, kind) {
+  const spec = IDEA_KINDS[kind];
+  const line = spec.moves(m);
+  const active = idea.index !== null && idea.kind === kind;
   const box = el("div", { class: "idea" });
   const buttons = el("div", { class: "row" });
   if (line.length) {
-    buttons.append(idea.index === null
-      ? el("button", { class: "primary", onclick: startIdea }, `▶ Show why ${m.best_san} is better`)
-      : el("button", { onclick: closeIdea }, "✕ Close the idea"));
+    buttons.append(active
+      ? el("button", { onclick: closeIdea }, "✕ Close")
+      : el("button", { class: kind === "punish" ? "warn" : "primary", onclick: () => startIdea(kind) }, spec.button(m)));
   }
-  if (idea.index === null) {
+  if (kind === "better" && idea.index === null) {
     buttons.append(el("button", { onclick: () => setView(state.view === "better" ? "played" : "better") },
       state.view === "better" ? "Show the move played" : "Show the better move on the board"));
   }
   box.append(buttons);
 
-  if (idea.index !== null) {
+  if (active) {
     const list = el("ol", { class: "idea-list" });
     line.forEach((ply, i) => {
-      const mover = ply.color === m.color ? (yours ? "You" : "They") : (yours ? "Opponent" : "You");
+      const mover = ply.color === m.color ? (yours ? "You" : "Opponent") : (yours ? "Opponent" : "You");
+      const tag = kind === "punish" && i === 0 ? ` · ${m.classification}` : "";
       list.append(el("li", { class: i + 1 === idea.index ? "current" : i + 1 < idea.index ? "done" : "" },
         el("button", { class: "idea-move", onclick: () => { pauseIdea(); idea.index = i + 1; render(); } },
-          el("strong", {}, ply.label), el("span", { class: "muted" }, ` · ${mover}`),
+          el("strong", {}, ply.label), el("span", { class: "muted" }, ` · ${mover}${tag}`),
           i + 1 === idea.index ? el("span", { class: "sub" }, ply.description) : null)));
     });
     box.append(list);
     if (idea.index === line.length) {
-      box.append(el("p", { class: "callout" },
-        `That's the idea: after ${m.best_san} and this line, the engine rates the position ${m.eval_before.text} — compared with ${m.eval_after.text} after the move that was played (${m.san}). Plus is good for White, minus for Black.`));
+      box.append(el("p", { class: "callout" }, `${spec.outro(m)} Plus is good for White, minus for Black.`));
     }
   }
   return box;
 }
 
 function renderIdea(m) {
-  const line = m.best_line_moves;
+  const spec = IDEA_KINDS[idea.kind];
+  const line = spec.moves(m);
   const i = idea.index;
-  const kind = (ply) => (ply.color === m.color ? "best" : "reply");
   if (i === 0) {
-    renderBoard(m.fen_before, null, [[line[0].uci, "best"]]);
-    $("#caption").textContent = `The idea behind ${m.best_san}. Press ▶ to play it out.`;
+    renderBoard(m.fen_before, null, [[line[0].uci, spec.arrow(m, line[0], 0)]]);
+    $("#caption").textContent = spec.intro(m);
   } else {
     const ply = line[i - 1];
-    renderBoard(ply.fen, [ply.uci.slice(0, 2), ply.uci.slice(2, 4)], [[ply.uci, kind(ply)]]);
+    renderBoard(ply.fen, [ply.uci.slice(0, 2), ply.uci.slice(2, 4)], [[ply.uci, spec.arrow(m, ply, i - 1)]]);
     $("#caption").textContent = `${i} of ${line.length}: ${ply.label} — ${ply.description}`;
   }
-  renderEval(m.eval_before);
+  renderEval(spec.eval(m));
   $("#idea-play").textContent = idea.timer ? "⏸" : "▶";
   $("#idea-prev").disabled = i === 0;
   $("#idea-next").disabled = i === line.length;
 }
 
-function startIdea() {
+function startIdea(kind) {
+  const m = moves()[state.step - 1];
+  if (!m || !IDEA_KINDS[kind].moves(m).length) return;
+  idea.kind = kind;
   idea.index = 0;
   playIdea();
 }
 
 function playIdea() {
   const m = moves()[state.step - 1];
-  if (!m || !m.best_line_moves.length) return;
-  if (idea.index === null || idea.index >= m.best_line_moves.length) idea.index = 0;
+  const length = m ? ideaLine(m).length : 0;
+  if (!length) return;
+  if (idea.index === null || idea.index >= length) idea.index = 0;
   stopIdea();
   idea.timer = setInterval(() => {
     idea.index += 1;
-    if (idea.index >= m.best_line_moves.length) stopIdea();
+    if (idea.index >= length) stopIdea();
     render();
   }, IDEA_DELAY_MS);
   render();
@@ -446,7 +482,7 @@ function pauseIdea() {
 function stepIdea(delta) {
   const m = moves()[state.step - 1];
   stopIdea();
-  idea.index = Math.max(0, Math.min(m.best_line_moves.length, idea.index + delta));
+  idea.index = Math.max(0, Math.min(ideaLine(m).length, idea.index + delta));
   render();
 }
 
@@ -554,7 +590,8 @@ document.addEventListener("keydown", (e) => {
     }
   }
   const actions = {
-    w: () => { const m = moves()[state.step - 1]; if (m && m.best_line_moves.length) startIdea(); },
+    w: () => startIdea("better"),
+    x: () => startIdea("punish"),
     ArrowLeft: () => go(state.step - 1),
     ArrowRight: () => go(state.step + 1),
     Home: () => go(0),
