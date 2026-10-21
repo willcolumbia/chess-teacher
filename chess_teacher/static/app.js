@@ -226,11 +226,24 @@ function render() {
   } else if (state.view === "better" && hasBetter) {
     renderBoard(m.fen_before, [m.uci.slice(0, 2), m.uci.slice(2, 4)], [[m.uci, "played"], [m.best_uci, "best"]]);
     renderEval(m.eval_before);
-    $("#caption").textContent = `Position before ${moveLabel(m)}. Red: what was played. Green: the better move, ${m.best_san}.`;
+    $("#caption").textContent = `Position before ${moveLabel(m)}. Red: what was played. Blue: the engine's best move, ${m.best_san}.`;
   } else {
-    renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], []);
+    // Dark blue: engine's best instead of the move played. Light blue: engine's best next move.
+    const arrows = [];
+    const notes = [`After ${moveLabel(m)}.`];
+    if (hasBetter) {
+      arrows.push([m.best_uci, "best"]);
+      notes.push(`Dark blue: engine's best instead (${m.best_san}).`);
+    } else {
+      notes.push(`${m.san} was the engine's best move.`);
+    }
+    if (m.reply_uci) {
+      arrows.push([m.reply_uci, "next"]);
+      notes.push(`Light blue: engine's best next move (${m.reply_san}).`);
+    }
+    renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], arrows);
     renderEval(m.eval_after);
-    $("#caption").textContent = `After ${moveLabel(m)}`;
+    $("#caption").textContent = notes.join(" ");
   }
   renderStep(moveCard(m));
 }

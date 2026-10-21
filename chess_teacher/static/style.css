@@ -14,9 +14,10 @@
   --inaccuracy: #d4a017;
   --mistake: #e07a1f;
   --blunder: #d0342c;
-  --arrow-best: rgba(46, 139, 87, 0.85);
+  --arrow-best: rgba(21, 90, 190, 0.85);
+  --arrow-next: rgba(79, 172, 254, 0.85);
   --arrow-played: rgba(208, 52, 44, 0.8);
-  --arrow-reply: rgba(48, 110, 200, 0.8);
+  --arrow-reply: rgba(142, 68, 173, 0.8);
   --arrow-neutral: rgba(90, 90, 90, 0.75);
 }
 
@@ -152,6 +153,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .arrow-best { stroke: var(--arrow-best); }
 .arrow-played { stroke: var(--arrow-played); }
 .arrow-best-head { fill: var(--arrow-best); }
+.arrow-next { stroke: var(--arrow-next); stroke-dasharray: 0.3 0.15; }
+.arrow-next-head { fill: var(--arrow-next); }
 .arrow-played-head { fill: var(--arrow-played); }
 .arrow-reply { stroke: var(--arrow-reply); }
 .arrow-reply-head { fill: var(--arrow-reply); }
