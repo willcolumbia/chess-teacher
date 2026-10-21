@@ -3,14 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chess Teacher</title>
+  <title>Analysis · Chess Teacher</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <nav class="site-nav">
+    <a class="brand" href="/">Chess Teacher</a>
+    <a href="/">Home</a>
+    <a href="/analysis" class="active" aria-current="page">Analysis</a>
+  </nav>
   <!-- Screen 1: paste the game -->
   <section id="screen-input" class="screen">
     <div class="card narrow">
-      <h1>Chess Teacher</h1>
+      <h1>Analysis</h1>
       <p class="muted">Paste a finished game and we'll go through it together, move by move.</p>
 
       <label for="pgn">Your game (PGN)</label>
@@ -110,6 +115,7 @@
     <p class="keys muted">Keys: ← → step · n next mistake · b better move · w show why better · x show why a mistake · f flip board · in "show why": ← → space Esc</p>
   </section>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/board.js"></script>
+  <script src="/static/analysis.js"></script>
 </body>
 </html>

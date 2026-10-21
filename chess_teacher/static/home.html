@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chess Teacher</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <a class="brand" href="/">Chess Teacher</a>
+    <a href="/" class="active" aria-current="page">Home</a>
+    <a href="/analysis">Analysis</a>
+  </nav>
+
+  <main class="home">
+    <div class="play">
+      <div class="board-area">
+        <div id="board" class="board playable" aria-label="Chess board"></div>
+        <div id="promotion" class="promotion" hidden></div>
+      </div>
+      <div class="play-bar">
+        <strong id="status" class="status"></strong>
+        <div class="row">
+          <button id="undo">Undo</button>
+          <button id="flip">Flip</button>
+          <button id="reset">New game</button>
+          <button id="to-analysis" class="primary">Analyze this game</button>
+        </div>
+      </div>
+      <p id="moves" class="line"></p>
+      <p id="error" class="error" hidden></p>
+    </div>
+  </main>
+
+  <script src="/static/board.js"></script>
+  <script src="/static/home.js"></script>
+</body>
+</html>

@@ -22,6 +22,13 @@ To use a Stockfish you already have, set `STOCKFISH_PATH=/path/to/stockfish`.
 .venv/bin/python -m chess_teacher   # then open http://localhost:5000
 ```
 
+The site has two pages:
+
+- **Home** (`/`): a board you can play on, moving pieces for both sides by clicking or dragging.
+  Only legal moves are allowed. Includes undo, new game, flip, and **Analyze this game**,
+  which sends the game to the Analysis page.
+- **Analysis** (`/analysis`): a move-by-move review of a finished game:
+
 1. On Chess.com, open the game → **Share** → **PGN** → copy.
 2. Paste it in (optionally with your username) and click **Analyze my game**.
 3. Pick which side you played, if it didn't recognise your username.
@@ -49,8 +56,11 @@ chess_teacher/
   explain/
     base.py          # MoveContext / Explainer interface
     rules.py         # rule-based explanations (hanging pieces, forks, pins, missed mates, ...)
-  web.py             # Flask API + background analysis jobs
-  static/            # the web page (no external dependencies)
+  web.py             # Flask pages, analysis jobs, and the /api/play legal-move endpoint
+  static/
+    home.html/.js    # playable board (Home)
+    analysis.html/.js  # move-by-move review (Analysis)
+    board.js         # board and arrow drawing shared by both pages
 ```
 
 ### Swapping in Claude for explanations (later)
