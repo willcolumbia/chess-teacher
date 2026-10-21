@@ -132,8 +132,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .eval-text { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; font-size: 9px; font-weight: 700; color: #888; writing-mode: vertical-rl; transform: rotate(180deg); }
 
 .board-area { position: relative; flex: 1; min-width: 0; }
-.board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; user-select: none; }
-.sq { position: relative; display: flex; align-items: center; justify-content: center; }
+.board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); aspect-ratio: 1; container-type: inline-size; border-radius: 4px; overflow: hidden; user-select: none; }
+.sq { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .sq.light { background: var(--light-sq); }
 .sq.dark { background: var(--dark-sq); }
 .sq.hl::after { content: ""; position: absolute; inset: 0; background: var(--highlight); }
@@ -142,7 +142,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 .sq.dark .coord { color: var(--light-sq); }
 .sq .coord.file { right: 3px; bottom: 1px; }
 .sq .coord.rank { left: 3px; top: 1px; }
-.piece { position: relative; z-index: 1; font-size: min(9vw, 48px); line-height: 1; }
+.piece { position: relative; z-index: 1; font-size: min(9vw, 48px); font-size: 10cqw; line-height: 1; }
 .piece.w { color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000, 0 1px 1px #000; }
 .piece.b { color: #111; text-shadow: 0 0 1px rgba(255,255,255,0.6); }
 
