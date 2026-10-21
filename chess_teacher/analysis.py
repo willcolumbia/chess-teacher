@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import math
+import statistics
 from typing import Callable, Dict, List, Optional, Tuple
 
 import chess
@@ -17,7 +18,8 @@ from .explain.rules import describe_tactic, line_san
 DEFAULT_DEPTH = 16
 
 # Drop in the mover's winning chances (percentage points) for each label.
-THRESHOLDS = [(30, "blunder"), (20, "mistake"), (10, "inaccuracy")]
+# Inaccuracy starts lower than Lichess's 10 so smaller slips get flagged too.
+THRESHOLDS = [(30, "blunder"), (20, "mistake"), (5, "inaccuracy")]
 EXPLAINED = {"inaccuracy", "mistake", "blunder"}
 CLASSIFICATIONS = ["best", "good", "inaccuracy", "mistake", "blunder"]
 
@@ -31,8 +33,29 @@ def win_percent(score: chess.engine.Score) -> float:
 
 
 def move_accuracy(drop: float) -> float:
-    """Lichess-style per-move accuracy from the drop in winning chances."""
-    return max(0.0, min(100.0, 103.1668 * math.exp(-0.04354 * drop) - 3.1669))
+    """Lichess per-move accuracy from the drop in winning chances (including its +1 uncertainty bonus)."""
+    if drop <= 0:
+        return 100.0
+    return max(0.0, min(100.0, 103.1668 * math.exp(-0.04354 * drop) - 3.1669 + 1))
+
+
+def game_accuracy(moves: List[Dict], color: str) -> Optional[float]:
+    """Lichess game accuracy for one side.
+
+    The average of (a) move accuracies weighted by how volatile the position was
+    around each move, and (b) their harmonic mean. Quiet moves in decided positions
+    count for little, and a few bad moves pull the score down hard.
+    """
+    wins = [m["eval_before"]["white_win"] for m in moves] + [moves[-1]["eval_after"]["white_win"]]
+    size = min(len(wins), max(2, min(8, len(moves) // 10)))
+    windows = [wins[:size]] * (size - 2) + [wins[i:i + size] for i in range(len(wins) - size + 1)]
+    weights = [max(0.5, min(12.0, statistics.pstdev(w))) for w in windows]
+    mine = [(m["accuracy"], weights[i]) for i, m in enumerate(moves) if m["color"] == color]
+    if not mine:
+        return None
+    weighted = sum(a * w for a, w in mine) / sum(w for _, w in mine)
+    harmonic = len(mine) / sum(1 / max(a, 1) for a, _ in mine)  # floor of 1 avoids dividing by zero
+    return (weighted + harmonic) / 2
 
 
 def is_mated_soon(score: chess.engine.Score) -> bool:
@@ -235,5 +258,5 @@ def summarize(moves: List[Dict], color: str) -> Dict:
     counts = {label: 0 for label in CLASSIFICATIONS}
     for m in mine:
         counts[m["classification"]] += 1
-    accuracy = sum(m["accuracy"] for m in mine) / len(mine) if mine else None
+    accuracy = game_accuracy(moves, color)
     return {"accuracy": round(accuracy, 1) if accuracy is not None else None, "counts": counts}

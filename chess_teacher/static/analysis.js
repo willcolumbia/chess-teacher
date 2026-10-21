@@ -290,7 +290,11 @@ function playersBlock() {
   const table = el("table", { class: "players" },
     el("thead", {}, el("tr", {}, ...["Player", "Rating", "Accuracy", "Inacc.", "Mistakes", "Blunders"].map((x) => el("th", {}, x)))),
     el("tbody", {}, ...rows));
-  return [el("div", { class: "table-wrap" }, table), el("p", {}, comparisonNote())];
+  return [
+    el("div", { class: "table-wrap" }, table),
+    el("p", { class: "muted small" }, "Accuracy uses the Lichess method: moves in sharp positions and big mistakes count more than quiet moves."),
+    el("p", {}, comparisonNote()),
+  ];
 }
 
 function comparisonNote() {
@@ -353,6 +357,10 @@ function moveCard(m) {
 
     el("h3", {}, "Verdict"),
     el("p", {}, verdict(m)),
+    el("div", { class: "move-accuracy" },
+      el("div", { class: "meter" }, el("div", { class: `fill c-${m.classification}`, style: `width: ${m.accuracy}%` })),
+      el("span", {}, el("strong", {}, `${Math.round(m.accuracy)}%`), " move accuracy"),
+      el("span", { class: "muted" }, m.win_drop > 0 ? `· lost ${m.win_drop}% winning chances` : "· no winning chances lost")),
     el("p", { class: "muted" }, `Evaluation: ${m.eval_before.text} → ${m.eval_after.text} (plus is good for White, minus for Black)`),
   ];
 

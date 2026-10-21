@@ -46,7 +46,8 @@ Keys: ← → step · n next mistake · b toggle better move · w show why bette
 While showing why: ← → step · space play/pause · Esc close.
 
 Moves are labelled by how much they dropped your winning chances (Lichess model):
-inaccuracy ≥ 10%, mistake ≥ 20%, blunder ≥ 30% (or walking into a forced mate).
+inaccuracy ≥ 5%, mistake ≥ 20%, blunder ≥ 30% (or walking into a forced mate).
+Game accuracy uses the Lichess method (volatility-weighted mean averaged with the harmonic mean).
 
 ## How it works
 
