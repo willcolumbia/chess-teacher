@@ -1,6 +1,5 @@
 "use strict";
 
-const GLYPHS = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
 const BAD = ["inaccuracy", "mistake", "blunder"];
 const PLURALS = { inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
 const PATTERNS = {
@@ -380,8 +379,8 @@ function renderBoard(fen, highlight, arrows) {
       const piece = grid[7 - rank][file];
       const sq = el("div", { class: `sq ${(rank + file) % 2 ? "light" : "dark"}${highlight && highlight.includes(name) ? " hl" : ""}` });
       if (piece) {
-        const white = piece === piece.toUpperCase();
-        sq.append(el("span", { class: `piece ${white ? "w" : "b"}` }, GLYPHS[piece.toLowerCase()] + "︎"));
+        const color = piece === piece.toUpperCase() ? "w" : "b";
+        sq.append(el("img", { class: "piece", src: `/static/pieces/${color}${piece.toUpperCase()}.svg`, alt: piece, draggable: "false" }));
       }
       if (r === 7) sq.append(el("span", { class: "coord file" }, String.fromCharCode(97 + file)));
       if (c === 0) sq.append(el("span", { class: "coord rank" }, String(rank + 1)));
