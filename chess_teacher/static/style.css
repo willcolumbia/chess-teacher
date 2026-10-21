@@ -184,9 +184,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .callout { border-left: 4px solid var(--accent); padding: 8px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; }
 .callout.c-warn { border-color: var(--blunder); }
 .line { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; color: var(--muted); }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 10px; }
-.stat { background: var(--bg); border-radius: 8px; padding: 10px 12px; }
-.stat .big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.table-wrap { overflow-x: auto; margin-top: 12px; }
+.players { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.players th, .players td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.players th:first-child, .players td:first-child { text-align: left; }
+.players th { font-size: 12px; color: var(--muted); font-weight: 600; }
+.players tr.me td { font-weight: 600; }
 .list-item { display: block; width: 100%; text-align: left; margin-top: 6px; }
 .list-item .sub { display: block; font-size: 13px; color: var(--muted); }
 

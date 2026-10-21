@@ -245,20 +245,73 @@ function renderStep(nodes) {
 // ---------- Step cards ----------
 
 function introCard() {
-  const s = state.result.summary[state.myColor];
   const mine = moves().filter(isMyMistake);
   return [
     el("h2", {}, "Let's go through your game"),
     el("p", {}, `You played ${state.myColor === "white" ? "White" : "Black"}. We'll step through all ${moves().length} moves — yours and your opponent's — and look at what each one does, whether it was good, and what was better.`),
-    el("div", { class: "stats" },
-      el("div", { class: "stat" }, el("div", { class: "big" }, s.accuracy == null ? "–" : `${s.accuracy}%`), el("div", { class: "muted" }, "your accuracy")),
-      ...BAD.map((label) => el("div", { class: "stat" },
-        el("div", { class: "big" }, String(s.counts[label])),
-        el("div", { class: "muted" }, s.counts[label] === 1 ? label : PLURALS[label])))),
+    ...playersBlock(),
     el("p", { class: "callout" }, mine.length
       ? "Your mistakes are marked in color on the timeline above. Press Start to begin from move 1, or n to jump straight to your next mistake."
       : "No inaccuracies, mistakes or blunders from you. Press Start to walk through the game anyway."),
   ];
+}
+
+// ---------- Ratings vs accuracy ----------
+
+function rating(color) {
+  const value = parseInt(state.result.headers[color === "white" ? "WhiteElo" : "BlackElo"], 10);
+  return Number.isFinite(value) ? value : null;
+}
+
+const seriousErrors = (s) => s.counts.mistake + s.counts.blunder;
+
+function playersBlock() {
+  const rows = ["white", "black"].map((color) => {
+    const s = state.result.summary[color];
+    const h = state.result.headers;
+    const name = (color === "white" ? h.White : h.Black) || color;
+    return el("tr", { class: color === state.myColor ? "me" : "" },
+      el("td", {}, `${color === "white" ? "♔" : "♚"} ${name}${color === state.myColor ? " (you)" : ""}`),
+      el("td", {}, rating(color) == null ? "–" : String(rating(color))),
+      el("td", {}, s.accuracy == null ? "–" : `${s.accuracy}%`),
+      ...BAD.map((label) => el("td", {}, String(s.counts[label]))));
+  });
+  const table = el("table", { class: "players" },
+    el("thead", {}, el("tr", {}, ...["Player", "Rating", "Accuracy", "Inacc.", "Mistakes", "Blunders"].map((x) => el("th", {}, x)))),
+    el("tbody", {}, ...rows));
+  return [el("div", { class: "table-wrap" }, table), el("p", {}, comparisonNote())];
+}
+
+function comparisonNote() {
+  const me = state.myColor;
+  const opp = me === "white" ? "black" : "white";
+  const ys = state.result.summary[me];
+  const os = state.result.summary[opp];
+  if (ys.accuracy == null || os.accuracy == null) return "";
+  const gap = ys.accuracy - os.accuracy;
+  const level = Math.abs(gap) < 3 ? 0 : Math.sign(gap); // 1: you played better, -1: they did
+  const detail = `${ys.accuracy}% vs ${os.accuracy}% accuracy, ${seriousErrors(ys)} vs ${seriousErrors(os)} mistakes and blunders`;
+  let note = level === 0
+    ? `You and your opponent played at about the same level (${detail}).`
+    : level > 0 ? `You outplayed your opponent (${detail}).` : `Your opponent played better this game (${detail}).`;
+
+  const mine = rating(me);
+  const theirs = rating(opp);
+  if (mine == null || theirs == null) return note;
+  const diff = mine - theirs;
+  if (diff <= -50) {
+    note += level >= 0
+      ? ` They're rated ${-diff} points higher, so you played above your rating.`
+      : ` They're rated ${-diff} points higher, so that's about what you'd expect.`;
+  } else if (diff >= 50) {
+    note += level > 0
+      ? ` You're rated ${diff} points higher, so that's about what you'd expect.`
+      : ` You're rated ${diff} points higher, so you played below your rating.`;
+  } else {
+    note += ` Your ratings are close (${mine} vs ${theirs}), so ${
+      level > 0 ? "this was a strong game for you" : level < 0 ? "there's room to catch up" : "an even game is what you'd expect"}.`;
+  }
+  return note;
 }
 
 function verdict(m) {
@@ -332,13 +385,9 @@ function summaryCard() {
     if (theme) counts[theme] = (counts[theme] || 0) + 1;
   }
   const patterns = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  const you = state.result.summary[state.myColor];
-  const them = state.result.summary[state.myColor === "white" ? "black" : "white"];
   return [
     el("h2", {}, "Summary"),
-    el("div", { class: "stats" },
-      el("div", { class: "stat" }, el("div", { class: "big" }, `${you.accuracy}%`), el("div", { class: "muted" }, "your accuracy")),
-      el("div", { class: "stat" }, el("div", { class: "big" }, `${them.accuracy}%`), el("div", { class: "muted" }, "opponent's accuracy"))),
+    ...playersBlock(),
     patterns.length ? el("h3", {}, "Patterns in your mistakes") : null,
     ...patterns.map(([theme, n]) => el("p", {}, `• ${PATTERNS[theme] || theme}${n > 1 ? ` (${n}×)` : ""}`)),
     el("h3", {}, mine.length ? "Review your mistakes again" : "No mistakes from you — well played!"),
