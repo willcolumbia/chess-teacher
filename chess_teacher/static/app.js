@@ -228,7 +228,7 @@ function render() {
     renderEval(m.eval_before);
     $("#caption").textContent = `Position before ${moveLabel(m)}. Red: what was played. Blue: the engine's best move, ${m.best_san}.`;
   } else {
-    // Dark blue: engine's best instead of the move played. Light blue: engine's best next move.
+    // Dark blue: engine's best instead of the move played. Green: engine's best next move.
     const arrows = [];
     const notes = [`After ${moveLabel(m)}.`];
     if (hasBetter) {
@@ -239,7 +239,7 @@ function render() {
     }
     if (m.reply_uci) {
       arrows.push([m.reply_uci, "next"]);
-      notes.push(`Light blue: engine's best next move (${m.reply_san}).`);
+      notes.push(`Green: engine's best next move (${m.reply_san}).`);
     }
     renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], arrows);
     renderEval(m.eval_after);
@@ -548,13 +548,17 @@ function renderBoard(fen, highlight, arrows) {
 function addArrow(layer, uci, kind) {
   const [x1, y1] = squareXY(uci.slice(0, 2));
   const [x2, y2] = squareXY(uci.slice(2, 4));
-  const len = Math.hypot(x2 - x1, y2 - y1);
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  // Only knight moves are 1x2 or 2x1; draw those as an L, long leg first.
+  const points = [[x1, y1]];
+  if ((dx === 1 && dy === 2) || (dx === 2 && dy === 1)) points.push(dx === 2 ? [x2, y1] : [x1, y2]);
+  const [px, py] = points[points.length - 1];
+  const len = Math.hypot(x2 - px, y2 - py);
   const k = (len - 0.3) / len; // stop short so the arrowhead sits inside the target square
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  line.setAttribute("x1", x1);
-  line.setAttribute("y1", y1);
-  line.setAttribute("x2", x1 + (x2 - x1) * k);
-  line.setAttribute("y2", y1 + (y2 - y1) * k);
+  points.push([px + (x2 - px) * k, py + (y2 - py) * k]);
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  line.setAttribute("points", points.map((p) => p.join(",")).join(" "));
   line.setAttribute("class", `arrow-${kind}`);
   line.setAttribute("marker-end", `url(#head-${kind})`);
   layer.append(line);
