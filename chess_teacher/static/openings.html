@@ -17,10 +17,16 @@
   <!-- Pick an opening -->
   <section id="screen-pick" class="screen">
     <h1>Openings</h1>
-    <p class="muted">Pick a side and an opening. You play the moves; the coach tells you the book move, the idea behind it, and what Stockfish thinks when you go your own way.</p>
-    <div class="segmented" role="group" aria-label="Your side">
-      <button data-side="white">I play White</button>
-      <button data-side="black">I play Black</button>
+    <p class="muted">Pick a side, a mode and an opening.</p>
+    <div class="row pick-controls">
+      <div class="segmented" role="group" aria-label="Your side">
+        <button data-side="white">I play White</button>
+        <button data-side="black">I play Black</button>
+      </div>
+      <div class="segmented" role="group" aria-label="Mode">
+        <button data-mode="learn" title="The coach shows each move and why; you play it">Learn</button>
+        <button data-mode="practice" title="Find the moves yourself; hints if you need them">Practice</button>
+      </div>
     </div>
     <div id="opening-list" class="opening-list"></div>
     <p id="pick-error" class="error" hidden></p>

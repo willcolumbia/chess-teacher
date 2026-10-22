@@ -336,3 +336,5 @@ button:disabled { opacity: 0.5; cursor: default; }
 .captured .lead { margin-left: 9px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .pgn-tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .pgn-tools .small-button { margin-top: 6px; }
+.pick-controls { gap: 12px; margin: 16px 0; }
+.pick-controls .segmented { margin: 0; }

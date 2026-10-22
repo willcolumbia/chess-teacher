@@ -26,6 +26,7 @@ const state = {
   inBook: true,
   variation: null,
   hint: 0, // 0 nothing shown, 1 idea shown, 2 move shown
+  mode: "learn", // "learn": every move is shown and explained first; "practice": find it yourself
   preview: null, // { fen, arrows, caption } while comparing a past move on the board
   log: [],
   score: { firstTry: 0, total: 0, misses: [] },
@@ -80,8 +81,12 @@ function label(sans, i) {
 
 // ---------- Pick screen ----------
 
+const learning = () => state.mode === "learn";
+const startHint = () => (learning() ? 2 : 0); // Learn mode shows each move up front
+
 function renderPick() {
   for (const b of document.querySelectorAll("[data-side]")) b.classList.toggle("active", b.dataset.side === state.side);
+  for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);
   const list = $("#opening-list");
   list.replaceChildren(
     ...state.openings
@@ -94,6 +99,14 @@ function renderPick() {
           el("span", { class: "muted small" }, `${o.variations.length} variations · about ${o.length} moves`)))
   );
 }
+
+document.querySelectorAll("[data-mode]").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.mode = b.dataset.mode;
+    store("openingMode", state.mode);
+    renderPick();
+  })
+);
 
 document.querySelectorAll("[data-side]").forEach((b) =>
   b.addEventListener("click", () => {
@@ -109,6 +122,7 @@ async function loadOpenings() {
     state.openings = await res.json();
     const saved = store("openingSide");
     if (saved === "white" || saved === "black") state.side = saved;
+    if (["learn", "practice"].includes(store("openingMode"))) state.mode = store("openingMode");
     renderPick();
   } catch (err) {
     $("#pick-error").textContent = "Couldn't load the openings.";
@@ -134,7 +148,7 @@ async function start(opening) {
     done: false,
     inBook: true,
     variation: null,
-    hint: 0,
+    hint: startHint(),
     preview: null,
     log: [],
     score: { firstTry: 0, total: 0, misses: [] },
@@ -166,7 +180,7 @@ async function apply(data, fenBefore) {
   if (fb) {
     state.score.total += 1;
     const playedIndex = data.sans.length - (data.reply ? 2 : 1);
-    if (fb.correct && state.hint < 2) state.score.firstTry += 1;
+    if (fb.correct && (learning() || state.hint < 2)) state.score.firstTry += 1;
     if (!fb.correct) state.score.misses.push({ played: label(data.sans, playedIndex), expected: fb.expected.san });
     addLog(feedbackEntry(fb, label(data.sans, playedIndex), fenBefore));
     state.mark = { square: fb.played.uci.slice(2, 4), classification: fb.classification };
@@ -203,7 +217,7 @@ async function apply(data, fenBefore) {
     inBook: data.in_book,
     traineeMoves: data.trainee_moves,
     length: data.length,
-    hint: 0,
+    hint: startHint(),
     selected: null,
   });
   if (data.variation) state.variation = data.variation;
@@ -350,6 +364,14 @@ function renderPrompt() {
   const box = $("#prompt");
   if (state.done || !state.opening) return box.replaceChildren();
   if (state.busy || !state.expected) return box.replaceChildren(el("p", { class: "muted" }, "…"));
+  if (learning()) {
+    box.replaceChildren(
+      el("p", {}, el("strong", {}, `Play ${state.expected.san}`), state.expected.source === "book" ? " (book move)" : " (Stockfish's move)"),
+      el("p", { class: "hint" }, state.expected.idea),
+      el("p", { class: "muted small" }, "Follow the green arrow.")
+    );
+    return;
+  }
   const nodes = [el("p", {}, el("strong", {}, "Your move."), state.expected.source === "book" ? " Play the book move." : " Play Stockfish's recommended move.")];
   if (state.hint >= 1) nodes.push(el("p", { class: "hint" }, `Hint: ${state.expected.idea}`));
   if (state.hint >= 2) nodes.push(el("p", { class: "hint" }, `The move is ${state.expected.san} (green arrow).`));
