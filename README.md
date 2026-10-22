@@ -57,7 +57,8 @@ Keys: ← → step · n next mistake · b toggle better move · w show why bette
 While showing why: ← → step · space play/pause · Esc close.
 
 Every page marks moves with Chess.com-style icons, on the board and in move lists:
-★ best, ! great (the best move when every alternative loses 15%+ winning chances; not for recaptures
+!! brilliant (the engine's best move that sacrifices at least a minor piece's worth, when the position
+wasn't already won and stays good), ★ best, ! great (the best move when every alternative loses 15%+ winning chances; not for recaptures
 or plain material grabs), ✓ good, ?! inaccuracy, ? mistake, ?? blunder, and a book icon in Openings.
 On Home, each move is rated live by a quick Stockfish check (`/api/rate`).
 

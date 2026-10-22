@@ -72,3 +72,22 @@ def test_only_move_is_great_but_obvious_captures_are_not():
     move = quiet.parse_san("Ra8+")
     assert classify(move, move, 0, cp(300), cp(300), cp(-300), quiet) == "great"
     assert classify(move, move, 0, cp(300), cp(300), cp(250), quiet) == "best"
+
+
+def test_sound_sacrifice_is_brilliant_but_a_trade_is_not():
+    import chess
+    import chess.engine
+
+    from chess_teacher.analysis import classify
+
+    cp = chess.engine.Cp
+    # A knight hop to e6 puts it where the d7 pawn can take it.
+    board = chess.Board("4k3/3p4/8/6N1/8/8/8/4K3 w - - 0 1")
+    sac = board.parse_san("Ne6")  # the d7 pawn can take it
+    assert classify(sac, sac, 0, cp(80), cp(90), None, board) == "brilliant"
+    # Same move in a position that was already completely winning: just best.
+    assert classify(sac, sac, 0, cp(900), cp(900), None, board) == "best"
+    # Rook takes a defended rook: material goes back and forth, no sacrifice.
+    trade = chess.Board("3rk3/2p5/8/8/8/8/8/3RK3 w - - 0 1")
+    rxd8 = trade.parse_san("Rxd8+")
+    assert classify(rxd8, rxd8, 0, cp(0), cp(0), None, trade) == "best"

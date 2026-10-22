@@ -41,6 +41,7 @@ const ChessBoard = (() => {
   // ---------- Move-quality icons (Chess.com style) ----------
 
   const LABELS = {
+    brilliant: "Brilliant",
     great: "Great",
     best: "Best",
     good: "Good",
@@ -50,6 +51,7 @@ const ChessBoard = (() => {
     blunder: "Blunder",
   };
   const GLYPHS = {
+    brilliant: { text: "!!" },
     great: { text: "!" },
     best: { path: "M10 3.6l1.9 4.1 4.4.5-3.3 3 .9 4.4L10 13.4l-3.9 2.2.9-4.4-3.3-3 4.4-.5z" },
     good: { path: "M5.6 10.4l3 3 5.9-6.6", stroke: true },

@@ -267,6 +267,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* Move-quality icons */
 :root {
+  --i-brilliant: #1baca6;
   --i-great: #5c8bb0;
   --i-best: #81b64c;
   --i-good: #77a36d;
@@ -279,6 +280,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 .mv-icon text { fill: #fff; font-weight: 800; font-family: system-ui, sans-serif; letter-spacing: -0.5px; }
 .mv-icon path { fill: #fff; }
 .mv-icon path.stroke { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.i-brilliant circle { fill: var(--i-brilliant); }
 .i-great circle { fill: var(--i-great); }
 .i-best circle { fill: var(--i-best); }
 .i-good circle { fill: var(--i-good); }
@@ -289,6 +291,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 .sq .sq-icon { position: absolute; z-index: 3; top: 3%; right: 3%; width: 36%; height: 36%; pointer-events: none; }
 .with-icon { display: inline-flex; align-items: center; gap: 5px; }
 .class-label { font-size: 13px; font-weight: 700; text-transform: none; }
+.class-label.t-brilliant { color: var(--i-brilliant); }
 .class-label.t-great { color: var(--i-great); }
 .class-label.t-best { color: var(--i-best); }
 .class-label.t-good { color: var(--i-good); }

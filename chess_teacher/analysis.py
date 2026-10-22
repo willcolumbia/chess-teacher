@@ -12,7 +12,7 @@ import chess.pgn
 
 from .engine import find_stockfish
 from .explain import Explainer, MoveContext, get_explainer
-from .explain.describe import describe_move
+from .explain.describe import describe_move, in_danger
 from .explain.rules import describe_tactic, line_san
 
 DEFAULT_DEPTH = 16
@@ -21,7 +21,7 @@ DEFAULT_DEPTH = 16
 # Inaccuracy starts lower than Lichess's 10 so smaller slips get flagged too.
 THRESHOLDS = [(30, "blunder"), (20, "mistake"), (5, "inaccuracy")]
 EXPLAINED = {"inaccuracy", "mistake", "blunder"}
-CLASSIFICATIONS = ["great", "best", "good", "inaccuracy", "mistake", "blunder"]
+CLASSIFICATIONS = ["brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder"]
 # "Great": the best move when every alternative loses at least this much winning chance.
 GREAT_GAP = 15
 
@@ -78,6 +78,36 @@ def is_obvious(board: chess.Board, move: chess.Move) -> bool:
     return is_recapture(board, move)
 
 
+def sacrificed_value(board: chess.Board, move: chess.Move) -> int:
+    """Material the move puts en prise beyond what it captures (0 if it sacrifices nothing).
+
+    Counts the mover's pieces (not pawns or the king) that are newly left undefended or
+    attacked by something cheaper after the move.
+    """
+    mover = board.turn
+    after = board.copy()
+    after.push(move)
+    given = 0
+    for square, piece in after.piece_map().items():
+        if piece.color != mover or piece.piece_type in (chess.PAWN, chess.KING):
+            continue
+        was_safe = square == move.to_square or not in_danger(board, square)
+        if was_safe and in_danger(after, square):
+            given = max(given, VALUES[piece.piece_type])
+    taken = VALUES[board.piece_type_at(move.to_square)] if board.is_capture(move) and not board.is_en_passant(move) else 0
+    return max(0, given - taken)
+
+
+def is_brilliant(board: chess.Board, move: chess.Move, before: chess.engine.Score, after: chess.engine.Score) -> bool:
+    """A sound sacrifice: gives up at least a minor piece's worth, in a position that wasn't
+    already won, and keeps the mover doing well."""
+    return (
+        sacrificed_value(board, move) >= 2
+        and win_percent(before) < 90
+        and win_percent(after) >= 50
+    )
+
+
 def is_recapture(board: chess.Board, move: chess.Move) -> bool:
     if not board.move_stack or not board.is_capture(move):
         return False
@@ -100,6 +130,8 @@ def classify(
     """`before`/`after`/`second` are from the mover's point of view; `board` is the
     position before the move (with its move stack), used to spot recaptures."""
     if move == best_move:
+        if board is not None and is_brilliant(board, move, before, after):
+            return "brilliant"
         only_move = second is not None and win_percent(before) - win_percent(second) >= GREAT_GAP
         if only_move and not (board is not None and is_obvious(board, move)):
             return "great"
