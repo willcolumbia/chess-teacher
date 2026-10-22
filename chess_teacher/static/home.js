@@ -29,6 +29,8 @@ const state = {
 let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
 
 const STOCKFISH_MIN_ELO = 1320; // below this the engine's strength is our approximation
+// Stockfish waits a random time in this range (ms) before moving, so it feels like a person thinking.
+const ENGINE_THINK_MS = [1000, 1800];
 
 function saveSettings() {
   try {
@@ -152,7 +154,9 @@ async function engineMove() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Stockfish couldn't move.");
-    await new Promise((r) => setTimeout(r, Math.max(0, 350 - (Date.now() - started)))); // don't reply instantly
+    const [low, high] = ENGINE_THINK_MS;
+    const think = low + Math.random() * (high - low);
+    await new Promise((r) => setTimeout(r, Math.max(0, think - (Date.now() - started))));
     if (request !== engineRequest) return; // undo or new game happened meanwhile
     state.thinking = false;
     await load([...state.moves, data.uci]);
