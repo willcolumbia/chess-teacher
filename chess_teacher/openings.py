@@ -163,7 +163,8 @@ def feedback(tree: Node, moves: List[str], engine: Engine) -> Dict:
     expected = recommended(tree, moves[:-1], before, engine)
     played = {"uci": move.uci(), "san": before.san(move), "description": describe_move(before, move)}
     if move.uci() == expected["uci"]:
-        return {"correct": True, "played": played, "expected": expected}
+        icon = "book" if expected["source"] == "book" else "best"
+        return {"correct": True, "played": played, "expected": expected, "classification": icon}
 
     # A different move: let Stockfish judge it.
     after = replay(moves)

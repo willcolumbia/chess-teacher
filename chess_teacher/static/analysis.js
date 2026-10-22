@@ -1,6 +1,7 @@
 "use strict";
 
 const BAD = ["inaccuracy", "mistake", "blunder"];
+const TABLE_CLASSES = ["great", "best", "good", "inaccuracy", "mistake", "blunder"];
 const PLURALS = { inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
 const PATTERNS = {
   "hanging-piece": "Leaving a piece where it can be taken",
@@ -240,7 +241,7 @@ function render() {
     $("#caption").textContent = `Position before ${moveLabel(m)}. Red: what was played. Blue: the engine's best move, ${m.best_san}.`;
   } else {
     // Blue: the engine's best move for the player who just moved.
-    renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], [[m.best_uci, "best"]]);
+    renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], [[m.best_uci, "best"]], moveIcon(m));
     renderEval(m.eval_after);
     $("#caption").textContent = hasBetter
       ? `After ${moveLabel(m)}. Blue: the engine's best move here was ${m.best_san}.`
@@ -285,10 +286,12 @@ function playersBlock() {
       el("td", {}, `${color === "white" ? "♔" : "♚"} ${name}${color === state.myColor ? " (you)" : ""}`),
       el("td", {}, rating(color) == null ? "–" : String(rating(color))),
       el("td", {}, s.accuracy == null ? "–" : `${s.accuracy}%`),
-      ...BAD.map((label) => el("td", {}, String(s.counts[label]))));
+      ...TABLE_CLASSES.map((label) => el("td", {}, String(s.counts[label] || 0))));
   });
   const table = el("table", { class: "players" },
-    el("thead", {}, el("tr", {}, ...["Player", "Rating", "Accuracy", "Inacc.", "Mistakes", "Blunders"].map((x) => el("th", {}, x)))),
+    el("thead", {}, el("tr", {},
+      ...["Player", "Rating", "Accuracy"].map((x) => el("th", {}, x)),
+      ...TABLE_CLASSES.map((c) => el("th", { title: ChessBoard.LABELS[c] }, ChessBoard.icon(c))))),
     el("tbody", {}, ...rows));
   return [
     el("div", { class: "table-wrap" }, table),
@@ -329,10 +332,20 @@ function comparisonNote() {
   return note;
 }
 
+const moveIcon = (m) => ({ square: m.uci.slice(2, 4), classification: m.classification });
+
+// Icon plus label, e.g. [??] Blunder
+function classBadge(classification) {
+  return el("span", { class: `with-icon class-label t-${classification}` },
+    ChessBoard.icon(classification), ChessBoard.LABELS[classification] || classification);
+}
+
 function verdict(m) {
   const yours = isMine(m);
   const whose = yours ? "your" : "their";
   switch (m.classification) {
+    case "great":
+      return "Great move — the only move that keeps the position together. Every alternative was clearly worse.";
     case "best":
       return "Best move — exactly what the engine would play.";
     case "good":
@@ -348,7 +361,7 @@ function moveCard(m) {
   const nodes = [
     el("div", { class: "who" },
       el("span", { class: "chip" + (yours ? " you" : "") }, yours ? "Your move" : "Opponent's move"),
-      el("span", { class: `badge c-${m.classification}` }, m.classification),
+      classBadge(m.classification),
       m.clock != null ? el("span", { class: "muted" }, `⏱ ${formatClock(m.clock)} left`) : null),
     el("div", { class: "san" }, moveLabel(m)),
 
@@ -411,7 +424,7 @@ function summaryCard() {
     ...patterns.map(([theme, n]) => el("p", {}, `• ${PATTERNS[theme] || theme}${n > 1 ? ` (${n}×)` : ""}`)),
     el("h3", {}, mine.length ? "Review your mistakes again" : "No mistakes from you — well played!"),
     ...mine.map(([m, i]) => el("button", { class: "list-item", onclick: () => go(i + 1) },
-      el("span", { class: `badge c-${m.classification}` }, m.classification), " ", moveLabel(m),
+      classBadge(m.classification), " ", moveLabel(m),
       el("span", { class: "sub" }, `Better: ${m.best_san}`))),
   ];
 }
@@ -509,7 +522,9 @@ function renderIdea(m) {
     $("#caption").textContent = spec.intro(m);
   } else {
     const ply = line[i - 1];
-    renderBoard(ply.fen, [ply.uci.slice(0, 2), ply.uci.slice(2, 4)], [[ply.uci, spec.arrow(m, ply, i - 1)]]);
+    // In the mistake playback, the first move is the one that was played: mark it.
+    const mark = idea.kind === "punish" && i === 1 ? moveIcon(m) : null;
+    renderBoard(ply.fen, [ply.uci.slice(0, 2), ply.uci.slice(2, 4)], [[ply.uci, spec.arrow(m, ply, i - 1)]], mark);
     $("#caption").textContent = `${i} of ${line.length}: ${ply.label} — ${ply.description}`;
   }
   renderEval(spec.eval(m));
@@ -565,8 +580,8 @@ function closeIdea() {
 
 // ---------- Board ----------
 
-function renderBoard(fen, highlight, arrows) {
-  ChessBoard.render($("#board"), fen, { flipped: state.flipped, highlight: highlight || [] });
+function renderBoard(fen, highlight, arrows, icon = null) {
+  ChessBoard.render($("#board"), fen, { flipped: state.flipped, highlight: highlight || [], icon });
   ChessBoard.drawArrows($("#arrow-layer"), arrows || [], state.flipped);
 }
 

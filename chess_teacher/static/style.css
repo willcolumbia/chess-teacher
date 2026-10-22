@@ -261,3 +261,39 @@ button:disabled { opacity: 0.5; cursor: default; }
 .prompt { border-top: 1px solid var(--border); padding-top: 10px; }
 .prompt .row { gap: 6px; }
 .hint { color: var(--accent); }
+
+/* Move-quality icons */
+:root {
+  --i-great: #5c8bb0;
+  --i-best: #81b64c;
+  --i-good: #77a36d;
+  --i-book: #a88865;
+  --i-inaccuracy: #e6b422;
+  --i-mistake: #f08a24;
+  --i-blunder: #d9362b;
+}
+.mv-icon { width: 18px; height: 18px; flex: none; vertical-align: middle; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
+.mv-icon text { fill: #fff; font-weight: 800; font-family: system-ui, sans-serif; letter-spacing: -0.5px; }
+.mv-icon path { fill: #fff; }
+.mv-icon path.stroke { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.i-great circle { fill: var(--i-great); }
+.i-best circle { fill: var(--i-best); }
+.i-good circle { fill: var(--i-good); }
+.i-book circle { fill: var(--i-book); }
+.i-inaccuracy circle { fill: var(--i-inaccuracy); }
+.i-mistake circle { fill: var(--i-mistake); }
+.i-blunder circle { fill: var(--i-blunder); }
+.sq .sq-icon { position: absolute; z-index: 3; top: 3%; right: 3%; width: 36%; height: 36%; pointer-events: none; }
+.with-icon { display: inline-flex; align-items: center; gap: 5px; }
+.class-label { font-size: 13px; font-weight: 700; text-transform: none; }
+.class-label.t-great { color: var(--i-great); }
+.class-label.t-best { color: var(--i-best); }
+.class-label.t-good { color: var(--i-good); }
+.class-label.t-book { color: var(--i-book); }
+.class-label.t-inaccuracy { color: var(--i-inaccuracy); }
+.class-label.t-mistake { color: var(--i-mistake); }
+.class-label.t-blunder { color: var(--i-blunder); }
+.players th .mv-icon { width: 20px; height: 20px; }
+#moves { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.move-item { display: inline-flex; align-items: center; gap: 3px; }
+.move-item .mv-icon { width: 15px; height: 15px; }

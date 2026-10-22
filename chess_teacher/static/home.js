@@ -24,6 +24,7 @@ const state = {
   colorChoice: "white", // "white", "black" or "random"
   myColor: "white", // the side you actually play this game
   thinking: false,
+  ratings: [], // classification of each move ("best", "mistake", ...), filled in as Stockfish rates them
 };
 let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
 
@@ -64,8 +65,42 @@ function players() {
 function saveMoves() {
   try {
     localStorage.setItem("homeMoves", JSON.stringify(state.moves));
+    localStorage.setItem("homeRatings", JSON.stringify(state.ratings));
   } catch (e) {
     // fine: the game just won't survive a reload
+  }
+}
+
+function savedRatings() {
+  try {
+    const ratings = JSON.parse(localStorage.getItem("homeRatings") || "[]");
+    return Array.isArray(ratings) ? ratings : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Ask Stockfish how good the last move was; show its icon when the answer arrives.
+async function rateLastMove() {
+  const moves = state.moves.slice();
+  const index = moves.length - 1;
+  if (index < 0 || state.ratings[index]) return;
+  try {
+    const res = await fetch("/api/rate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moves }),
+    });
+    const data = await res.json();
+    if (!res.ok) return;
+    // Still the same game (no undo / new game since)?
+    if (state.moves.length > index && state.moves[index] === moves[index] && state.moves.slice(0, index).join() === moves.slice(0, index).join()) {
+      state.ratings[index] = data.classification;
+      saveMoves();
+      render();
+    }
+  } catch (e) {
+    // no icon for this move
   }
 }
 
@@ -97,8 +132,10 @@ async function load(moves) {
     gameOver: data.game_over,
   });
   state.selected = null;
+  state.ratings = state.ratings.slice(0, moves.length);
   saveMoves();
   render();
+  rateLastMove();
   if (enginesTurn()) engineMove();
 }
 
@@ -139,11 +176,13 @@ function targetsFrom(square) {
 
 function render() {
   const last = state.moves[state.moves.length - 1];
+  const rating = state.ratings[state.moves.length - 1];
   ChessBoard.render(boardEl, state.fen, {
     flipped: state.flipped,
     highlight: last ? [last.slice(0, 2), last.slice(2, 4)] : [],
     selected: state.selected,
     targets: state.selected ? targetsFrom(state.selected) : [],
+    icon: last && rating ? { square: last.slice(2, 4), classification: rating } : null,
   });
   $("#status").textContent = statusText();
   $("#undo").disabled = state.moves.length === 0;
@@ -156,9 +195,16 @@ function render() {
     ? `You (${state.myColor}) vs Stockfish ${state.elo}`
     : "Two players — move both sides";
   $("#to-analysis").disabled = state.moves.length === 0;
-  $("#moves").textContent = state.sans
-    .map((san, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${san}` : san))
-    .join(" ");
+  $("#moves").replaceChildren(
+    ...state.sans.map((san, i) => {
+      const item = document.createElement("span");
+      item.className = "move-item";
+      item.append(i % 2 === 0 ? `${i / 2 + 1}. ${san}` : san);
+      const badge = ChessBoard.icon(state.ratings[i]);
+      if (badge) item.append(badge);
+      return item;
+    })
+  );
 }
 
 async function tryMove(from, to) {
@@ -292,4 +338,5 @@ $("#to-analysis").addEventListener("click", () => {
 });
 
 loadSettings();
+state.ratings = savedRatings();
 load(savedMoves()).catch(() => load([]).catch((err) => showError(err.message)));

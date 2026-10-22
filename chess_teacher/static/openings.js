@@ -18,6 +18,7 @@ const state = {
   legal: [],
   expected: null, // { uci, san, idea, source }
   lastMove: null,
+  mark: null, // { square, classification }: icon on your last move
   selected: null,
   flipped: false,
   busy: false,
@@ -126,6 +127,7 @@ async function start(opening) {
     legal: [],
     expected: null,
     lastMove: null,
+    mark: null,
     selected: null,
     flipped: opening.color === "black",
     busy: true,
@@ -167,6 +169,7 @@ async function apply(data, fenBefore) {
     if (fb.correct && state.hint < 2) state.score.firstTry += 1;
     if (!fb.correct) state.score.misses.push({ played: label(data.sans, playedIndex), expected: fb.expected.san });
     addLog(feedbackEntry(fb, label(data.sans, playedIndex), fenBefore));
+    state.mark = { square: fb.played.uci.slice(2, 4), classification: fb.classification };
   }
   const wasBook = state.expected ? state.expected.source === "book" : true;
 
@@ -177,7 +180,15 @@ async function apply(data, fenBefore) {
     render();
     await sleep(fb ? REPLY_DELAY_MS : 250);
     const replyLabel = label(data.sans, data.sans.length - 1);
-    addLog({ kind: "them", title: replyLabel, text: data.reply.note, variation: data.reply.variation });
+    addLog({
+      kind: "them",
+      title: replyLabel,
+      text: data.reply.note,
+      variation: data.reply.variation,
+      book: data.reply.source === "book",
+    });
+    // The reply may land on the square your icon was on.
+    if (state.mark && data.reply.uci.slice(2, 4) === state.mark.square) state.mark = null;
     if (data.reply.variation && data.reply.variation !== state.variation) state.variation = data.reply.variation;
   }
 
@@ -217,6 +228,7 @@ function feedbackEntry(fb, playedLabel, fenBefore) {
       ok: true,
       title: playedLabel,
       badge: exp.source === "book" ? "Book move" : "Stockfish's choice",
+      classification: fb.classification,
       text: exp.idea,
     };
   }
@@ -225,8 +237,8 @@ function feedbackEntry(fb, playedLabel, fenBefore) {
     kind: "you",
     ok: false,
     title: playedLabel,
-    badge: playable ? "Playable" : fb.classification,
-    badgeClass: playable ? "good" : fb.classification,
+    badge: playable ? "Playable" : ChessBoard.LABELS[fb.classification],
+    classification: fb.classification,
     text: playable
       ? `Not the ${source} move, but Stockfish thinks it's fine (you lost ${fb.win_drop}% winning chances). ${fb.played.description}`
       : fb.explanation,
@@ -259,6 +271,7 @@ function render() {
     highlight: !view && state.lastMove ? [state.lastMove.slice(0, 2), state.lastMove.slice(2, 4)] : [],
     selected: view ? null : state.selected,
     targets: !view && state.selected ? targetsFrom(state.selected) : [],
+    icon: view ? null : state.mark,
   });
   ChessBoard.drawArrows($("#arrow-layer"), arrows, state.flipped);
   $("#caption").textContent = view ? view.caption : state.hint >= 2 && state.expected ? `Blue: ${state.expected.san}` : "";
@@ -271,6 +284,12 @@ function render() {
 
   renderLog();
   renderPrompt();
+}
+
+// Icon plus label, e.g. [book] Book move
+function classBadge(classification, text) {
+  return el("span", { class: `with-icon class-label t-${classification}` },
+    ChessBoard.icon(classification), text || ChessBoard.LABELS[classification]);
 }
 
 function renderLog() {
@@ -286,12 +305,13 @@ function renderEntry(entry) {
     case "them":
       return el("div", { class: "entry them" },
         el("div", { class: "entry-head" }, el("strong", {}, entry.title), el("span", { class: "muted" }, "Opponent"),
+          entry.book ? classBadge("book") : null,
           entry.variation ? el("span", { class: "chip" }, entry.variation) : null),
         el("div", {}, entry.text));
     case "you":
       return el("div", { class: `entry you ${entry.ok ? "ok" : "miss"}` },
         el("div", { class: "entry-head" }, el("strong", {}, entry.title),
-          el("span", { class: `badge c-${entry.ok ? "best" : entry.badgeClass}` }, entry.ok ? `✓ ${entry.badge}` : entry.badge)),
+          classBadge(entry.classification, entry.badge)),
         el("div", {}, entry.text),
         entry.expected ? el("div", { class: "expected" }, entry.expected) : null,
         entry.preview
@@ -357,6 +377,7 @@ async function onMove(from, to) {
   const hintLevel = state.hint;
   state.busy = true;
   state.selected = null;
+  state.mark = null; // the previous move's icon; the new one arrives with the feedback
   showError("");
   try {
     // Show your move right away, then the coach's verdict and the reply.

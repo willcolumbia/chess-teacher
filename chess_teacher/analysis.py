@@ -21,10 +21,13 @@ DEFAULT_DEPTH = 16
 # Inaccuracy starts lower than Lichess's 10 so smaller slips get flagged too.
 THRESHOLDS = [(30, "blunder"), (20, "mistake"), (5, "inaccuracy")]
 EXPLAINED = {"inaccuracy", "mistake", "blunder"}
-CLASSIFICATIONS = ["best", "good", "inaccuracy", "mistake", "blunder"]
+CLASSIFICATIONS = ["great", "best", "good", "inaccuracy", "mistake", "blunder"]
+# "Great": the best move when every alternative loses at least this much winning chance.
+GREAT_GAP = 15
 
 ProgressFn = Callable[[int, int], None]
-Evaluation = Tuple[chess.engine.PovScore, List[chess.Move]]
+# (score, principal variation, score of the second-best move or None)
+Evaluation = Tuple[chess.engine.PovScore, List[chess.Move], Optional[chess.engine.PovScore]]
 
 
 def win_percent(score: chess.engine.Score) -> float:
@@ -62,15 +65,44 @@ def is_mated_soon(score: chess.engine.Score) -> bool:
     return score.is_mate() and score != chess.engine.MateGiven and score.mate() < 0
 
 
+VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
+
+
+def is_obvious(board: chess.Board, move: chess.Move) -> bool:
+    """A recapture, or taking a piece worth more than the capturer: not 'great', however forced."""
+    if not board.is_capture(move) or board.is_en_passant(move):
+        return False
+    captured = board.piece_type_at(move.to_square)
+    if VALUES[captured] > VALUES[board.piece_type_at(move.from_square)]:
+        return True
+    return is_recapture(board, move)
+
+
+def is_recapture(board: chess.Board, move: chess.Move) -> bool:
+    if not board.move_stack or not board.is_capture(move):
+        return False
+    previous = board.pop()
+    try:
+        return previous.to_square == move.to_square and board.is_capture(previous)
+    finally:
+        board.push(previous)
+
+
 def classify(
     move: chess.Move,
     best_move: chess.Move,
     drop: float,
     before: chess.engine.Score,
     after: chess.engine.Score,
+    second: Optional[chess.engine.Score] = None,
+    board: Optional[chess.Board] = None,
 ) -> str:
-    """`before`/`after` are from the mover's point of view."""
+    """`before`/`after`/`second` are from the mover's point of view; `board` is the
+    position before the move (with its move stack), used to spot recaptures."""
     if move == best_move:
+        only_move = second is not None and win_percent(before) - win_percent(second) >= GREAT_GAP
+        if only_move and not (board is not None and is_obvious(board, move)):
+            return "great"
         return "best"
     # Walking into a forced mate is serious even in a bad position (Lichess rule),
     # but less so when the position was already hopeless.
@@ -131,11 +163,30 @@ def line_details(board: chess.Board, line: List[chess.Move], plies: int = IDEA_P
 
 def evaluate(engine: chess.engine.SimpleEngine, board: chess.Board, limit) -> Evaluation:
     if board.is_checkmate():
-        return chess.engine.PovScore(chess.engine.MateGiven, not board.turn), []
+        return chess.engine.PovScore(chess.engine.MateGiven, not board.turn), [], None
     if board.is_game_over():
-        return chess.engine.PovScore(chess.engine.Cp(0), board.turn), []
-    info = engine.analyse(board, limit)
-    return info["score"], info.get("pv", [])
+        return chess.engine.PovScore(chess.engine.Cp(0), board.turn), [], None
+    infos = engine.analyse(board, limit, multipv=2)
+    second = infos[1]["score"] if len(infos) > 1 else None
+    return infos[0]["score"], infos[0].get("pv", []), second
+
+
+def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
+    """Classify the last move played on `board` (which must have a move stack)."""
+    after = board.copy()
+    before = board.copy()
+    move = before.pop()
+    mover = before.turn
+    limit = chess.engine.Limit(depth=depth)
+    with chess.engine.SimpleEngine.popen_uci(find_stockfish()) as engine:
+        score_before, best_line, second = evaluate(engine, before, limit)
+        score_after, _, _ = evaluate(engine, after, limit)
+    rel_before, rel_after = score_before.pov(mover), score_after.pov(mover)
+    drop = max(0.0, win_percent(rel_before) - win_percent(rel_after))
+    best_move = best_line[0] if best_line else move
+    second_rel = second.pov(mover) if second else None
+    label = classify(move, best_move, drop, rel_before, rel_after, second_rel, before)
+    return {"uci": move.uci(), "classification": label, "win_drop": round(drop, 1), "best_uci": best_move.uci()}
 
 
 def read_game(pgn_text: str) -> chess.pgn.Game:
@@ -180,12 +231,13 @@ def analyze_pgn(
     for i, node in enumerate(nodes):
         move = node.move
         mover = board.turn
-        score_before, best_line = evals[i]
-        score_after, reply_line = evals[i + 1]
+        score_before, best_line, second = evals[i]
+        score_after, reply_line, _ = evals[i + 1]
         best_move = best_line[0] if best_line else move
         rel_before, rel_after = score_before.pov(mover), score_after.pov(mover)
         drop = max(0.0, win_percent(rel_before) - win_percent(rel_after))
-        label = classify(move, best_move, drop, rel_before, rel_after)
+        second_rel = second.pov(mover) if second else None
+        label = classify(move, best_move, drop, rel_before, rel_after, second_rel, board)
 
         explanation, themes = None, []
         if label in EXPLAINED:

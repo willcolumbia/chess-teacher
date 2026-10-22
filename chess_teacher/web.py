@@ -19,7 +19,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from . import openings, opponent
 from .positions import game_status, replay, sans_of
-from .analysis import DEFAULT_DEPTH, analyze_pgn, read_game
+from .analysis import DEFAULT_DEPTH, analyze_pgn, rate_last_move, read_game
 
 STATIC = Path(__file__).parent / "static"
 MAX_JOBS = 50
@@ -149,6 +149,21 @@ def openings_turn():
     body = request.get_json(silent=True) or {}
     try:
         return jsonify(openings.turn(str(body.get("opening")), body.get("moves") or []))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.post("/api/rate")
+def rate():
+    """Classify the last of `moves` (best, great, good, inaccuracy, mistake, blunder)."""
+    body = request.get_json(silent=True) or {}
+    try:
+        board = replay(body.get("moves"))
+        if not board.move_stack:
+            raise ValueError("No moves to rate.")
+        return jsonify(rate_last_move(board))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except FileNotFoundError as exc:

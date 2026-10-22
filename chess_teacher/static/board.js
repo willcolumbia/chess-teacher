@@ -38,9 +38,63 @@ const ChessBoard = (() => {
     return img;
   }
 
+  // ---------- Move-quality icons (Chess.com style) ----------
+
+  const LABELS = {
+    great: "Great",
+    best: "Best",
+    good: "Good",
+    book: "Book",
+    inaccuracy: "Inaccuracy",
+    mistake: "Mistake",
+    blunder: "Blunder",
+  };
+  const GLYPHS = {
+    great: { text: "!" },
+    best: { path: "M10 3.6l1.9 4.1 4.4.5-3.3 3 .9 4.4L10 13.4l-3.9 2.2.9-4.4-3.3-3 4.4-.5z" },
+    good: { path: "M5.6 10.4l3 3 5.9-6.6", stroke: true },
+    book: { path: "M5 5.5c1.8-.6 3.6-.4 5 .8 1.4-1.2 3.2-1.4 5-.8v9c-1.8-.6-3.6-.4-5 .8-1.4-1.2-3.2-1.4-5-.8z" },
+    inaccuracy: { text: "?!" },
+    mistake: { text: "?" },
+    blunder: { text: "??" },
+  };
+
+  // A round icon for a move classification, or null for unknown ones.
+  function icon(classification) {
+    const glyph = GLYPHS[classification];
+    if (!glyph) return null;
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("class", `mv-icon i-${classification}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", LABELS[classification]);
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = LABELS[classification];
+    const circle = document.createElementNS(SVG_NS, "circle");
+    circle.setAttribute("cx", "10");
+    circle.setAttribute("cy", "10");
+    circle.setAttribute("r", "10");
+    svg.append(title, circle);
+    if (glyph.text) {
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("x", "10");
+      text.setAttribute("y", "14.4");
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("font-size", glyph.text.length > 1 ? "11" : "13");
+      text.textContent = glyph.text;
+      svg.append(text);
+    } else {
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("d", glyph.path);
+      if (glyph.stroke) path.setAttribute("class", "stroke");
+      svg.append(path);
+    }
+    return svg;
+  }
+
   // Options: flipped, highlight (squares tinted yellow), selected (square),
-  // targets (squares to mark as legal destinations).
-  function render(boardEl, fen, { flipped = false, highlight = [], selected = null, targets = [] } = {}) {
+  // targets (squares to mark as legal destinations), icon ({ square, classification }).
+  function render(boardEl, fen, { flipped = false, highlight = [], selected = null, targets = [], icon: mark = null } = {}) {
     const grid = parseFen(fen);
     boardEl.replaceChildren();
     for (let r = 0; r < 8; r++) {
@@ -56,6 +110,13 @@ const ChessBoard = (() => {
         const sq = make("div", classes.join(" "));
         sq.dataset.square = name;
         if (piece) sq.append(pieceImage(piece));
+        if (mark && mark.square === name) {
+          const badge = icon(mark.classification);
+          if (badge) {
+            badge.classList.add("sq-icon");
+            sq.append(badge);
+          }
+        }
         if (r === 7) sq.append(make("span", "coord file", String.fromCharCode(97 + file)));
         if (c === 0) sq.append(make("span", "coord rank", String(rank + 1)));
         boardEl.append(sq);
@@ -172,5 +233,5 @@ const ChessBoard = (() => {
     boardEl.addEventListener("pointercancel", (e) => endDrag(e, true));
   }
 
-  return { render, drawArrows, pieceAt, pieceImage, attachInput };
+  return { render, drawArrows, pieceAt, pieceImage, attachInput, icon, LABELS };
 })();

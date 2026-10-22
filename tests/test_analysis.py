@@ -55,3 +55,20 @@ def test_game_accuracy_punishes_a_blunder_more_than_a_plain_average():
     plain = sum(m["accuracy"] for m in moves if m["color"] == "white") / 20
     assert game_accuracy(moves, "white") < plain - 10
     assert game_accuracy(moves, "black") > 99
+
+
+def test_only_move_is_great_but_obvious_captures_are_not():
+    import chess
+    import chess.engine
+
+    from chess_teacher.analysis import classify
+
+    cp = chess.engine.Cp
+    board = chess.Board("4k3/8/8/8/8/8/4q3/R3K3 w - - 0 1")
+    # Kxe2 would be "only move" by the scores, but it takes a queen with the king: obvious.
+    take = board.parse_san("Kxe2")
+    assert classify(take, take, 0, cp(500), cp(500), cp(-900), board) == "best"
+    quiet = chess.Board("4k3/8/8/8/8/8/8/R3K3 w - - 0 1")
+    move = quiet.parse_san("Ra8+")
+    assert classify(move, move, 0, cp(300), cp(300), cp(-300), quiet) == "great"
+    assert classify(move, move, 0, cp(300), cp(300), cp(250), quiet) == "best"

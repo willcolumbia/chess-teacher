@@ -56,6 +56,11 @@ The site has two pages:
 Keys: ← → step · n next mistake · b toggle better move · w show why better · x show why a mistake · f flip board.
 While showing why: ← → step · space play/pause · Esc close.
 
+Every page marks moves with Chess.com-style icons, on the board and in move lists:
+★ best, ! great (the best move when every alternative loses 15%+ winning chances; not for recaptures
+or plain material grabs), ✓ good, ?! inaccuracy, ? mistake, ?? blunder, and a book icon in Openings.
+On Home, each move is rated live by a quick Stockfish check (`/api/rate`).
+
 Moves are labelled by how much they dropped your winning chances (Lichess model):
 inaccuracy ≥ 5%, mistake ≥ 20%, blunder ≥ 30% (or walking into a forced mate).
 Game accuracy uses the Lichess method (volatility-weighted mean averaged with the harmonic mean).
