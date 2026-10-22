@@ -197,9 +197,7 @@ function go(step) {
   stopIdea();
   idea.index = null;
   state.step = Math.max(0, Math.min(lastStep(), step));
-  const m = moves()[state.step - 1];
-  // Start on the comparison for your own mistakes, otherwise on the move played.
-  state.view = m && isMyMistake(m) ? "better" : "played";
+  state.view = "played"; // the best move shows only when asked for
   render();
 }
 
@@ -229,16 +227,16 @@ function render() {
   if (showingIdea) {
     renderIdea(m);
   } else if (state.view === "better" && hasBetter) {
-    renderBoard(m.fen_before, [m.uci.slice(0, 2), m.uci.slice(2, 4)], [[m.uci, "played"], [m.best_uci, "best"]]);
+    // "Show best move": the position before the move, with only the engine's choice (green).
+    renderBoard(m.fen_before, null, [[m.best_uci, "best"]]);
     renderEval(m.eval_before);
-    $("#caption").textContent = `Position before ${moveLabel(m)}. Red: what was played. Green: the engine's best move, ${m.best_san}.`;
+    $("#caption").textContent = `Position before ${moveLabel(m)}. Green: the engine's best move, ${m.best_san}.`;
   } else {
-    // Yellow: the move played. Green: the engine's best move instead, when it differs.
-    const arrows = hasBetter ? [[m.uci, "last"], [m.best_uci, "best"]] : [[m.uci, "last"]];
-    renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], arrows, moveIcon(m));
+    // The move as played (yellow). The best move only shows after "Show best move".
+    renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], [[m.uci, "last"]], moveIcon(m));
     renderEval(m.eval_after);
     $("#caption").textContent = hasBetter
-      ? `Yellow: ${moveLabel(m)} as played. Green: the engine's best move here was ${m.best_san}.`
+      ? `Yellow: ${moveLabel(m)} as played. Click "Show best move" to see the engine's choice.`
       : `Yellow: ${moveLabel(m)} as played — the engine's best move.`;
   }
   renderStep(moveCard(m));
