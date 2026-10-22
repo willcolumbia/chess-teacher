@@ -147,7 +147,7 @@ async function start(opening) {
   render();
   try {
     const data = await post("/api/openings/turn", { opening: opening.id, moves: [] });
-    apply(data, null);
+    await apply(data, null);
   } catch (err) {
     showError(err.message);
   } finally {
@@ -265,7 +265,9 @@ const canMove = () => !state.busy && !state.done && !state.preview && traineeToM
 function render() {
   if (!state.opening) return;
   const view = state.preview;
-  const arrows = view ? view.arrows : state.hint >= 2 && state.expected ? [[state.expected.uci, "best"]] : [];
+  const arrows = view ? view.arrows : [];
+  if (!view && state.lastMove) arrows.push([state.lastMove, "last"]);
+  if (!view && state.hint >= 2 && state.expected) arrows.push([state.expected.uci, "best"]);
   ChessBoard.render(boardEl, view ? view.fen : state.fen, {
     flipped: state.flipped,
     highlight: !view && state.lastMove ? [state.lastMove.slice(0, 2), state.lastMove.slice(2, 4)] : [],

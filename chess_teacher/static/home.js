@@ -184,6 +184,7 @@ function render() {
     targets: state.selected ? targetsFrom(state.selected) : [],
     icon: last && rating ? { square: last.slice(2, 4), classification: rating } : null,
   });
+  ChessBoard.drawArrows($("#arrow-layer"), last ? [[last, "last"]] : [], state.flipped);
   $("#status").textContent = statusText();
   $("#undo").disabled = state.moves.length === 0;
   for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);

@@ -16,6 +16,7 @@
   --blunder: #d0342c;
   --arrow-best: rgba(21, 90, 190, 0.85);
   --arrow-played: rgba(208, 52, 44, 0.8);
+  --arrow-last: rgba(245, 190, 25, 0.9);
   --arrow-reply: rgba(142, 68, 173, 0.8);
   --arrow-neutral: rgba(90, 90, 90, 0.75);
 }
@@ -153,6 +154,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .arrow-played { stroke: var(--arrow-played); }
 .arrow-best-head { fill: var(--arrow-best); }
 .arrow-played-head { fill: var(--arrow-played); }
+.arrow-last { stroke: var(--arrow-last); }
+.arrow-last-head { fill: var(--arrow-last); }
 .arrow-reply { stroke: var(--arrow-reply); }
 .arrow-reply-head { fill: var(--arrow-reply); }
 .arrow-neutral { stroke: var(--arrow-neutral); }

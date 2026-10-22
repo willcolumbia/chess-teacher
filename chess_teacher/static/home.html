@@ -37,6 +37,12 @@
       </div>
       <div class="board-area">
         <div id="board" class="board playable" aria-label="Chess board"></div>
+        <svg class="arrows" viewBox="0 0 8 8" aria-hidden="true">
+          <defs>
+            <marker id="head-last" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-last-head"/></marker>
+          </defs>
+          <g id="arrow-layer"></g>
+        </svg>
         <div id="promotion" class="promotion" hidden></div>
       </div>
       <div class="play-bar">
