@@ -84,6 +84,66 @@ $("#clear-pgn").addEventListener("click", () => {
 });
 
 $("#analyze").addEventListener("click", analyze);
+
+// ---------- Recent Chess.com games ----------
+
+const RECENT_REFRESH_MS = 60000; // re-check for new games while this screen is open
+const RECENT_SHOWN = 10;
+let latestGameEnd = 0;
+
+function ago(seconds) {
+  const s = Math.max(0, Date.now() / 1000 - seconds);
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+
+function gameRow(game, lastSeen) {
+  const mark = { win: "W", loss: "L", draw: "D" }[game.outcome];
+  return el("button", {
+    class: "recent-game",
+    title: "Analyze this game",
+    onclick: () => {
+      store("recentSeen", String(latestGameEnd)); // games up to now are no longer "New"
+      $("#pgn").value = game.pgn;
+      analyze();
+    },
+  },
+    el("span", { class: `outcome o-${game.outcome}` }, mark),
+    el("span", { class: "who" }, `vs ${game.opponent}`, game.opponent_rating ? el("span", { class: "muted" }, ` (${game.opponent_rating})`) : null),
+    el("span", { class: "muted small" }, `${game.color === "white" ? "♔" : "♚"} ${game.time_class} · ${ago(game.end_time)}`),
+    game.end_time > lastSeen ? el("span", { class: "chip you" }, "New") : null);
+}
+
+async function loadRecent() {
+  const box = $("#recent");
+  const user = $("#username").value.trim();
+  if (!user) {
+    box.replaceChildren(el("p", { class: "muted small" }, "Enter your Chess.com username to see your latest games here."));
+    return;
+  }
+  try {
+    const res = await fetch(`/api/chesscom/${encodeURIComponent(user)}`);
+    const games = await res.json();
+    if (!res.ok) throw new Error(games.error || "Couldn't load your games.");
+    const lastSeen = Number(store("recentSeen") || 0);
+    box.replaceChildren(...(games.length
+      ? games.slice(0, RECENT_SHOWN).map((g) => gameRow(g, lastSeen))
+      : [el("p", { class: "muted small" }, "No games in the last two months.")]));
+    if (games.length) latestGameEnd = games[0].end_time;
+  } catch (err) {
+    box.replaceChildren(el("p", { class: "error" }, err.message));
+  }
+}
+
+$("#username").addEventListener("change", () => {
+  store("username", $("#username").value.trim());
+  loadRecent();
+});
+loadRecent();
+setInterval(() => {
+  if (!$("#screen-input").hidden) loadRecent();
+}, RECENT_REFRESH_MS);
 $("#new-game").addEventListener("click", () => show("input"));
 
 function showError(msg) {

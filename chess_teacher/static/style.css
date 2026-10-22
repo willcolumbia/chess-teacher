@@ -338,3 +338,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .pgn-tools .small-button { margin-top: 6px; }
 .pick-controls { gap: 12px; margin: 16px 0; }
 .pick-controls .segmented { margin: 0; }
+
+/* Recent Chess.com games on the Analysis start screen */
+#screen-input h3 { margin-top: 16px; }
+.recent { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.recent-game { display: grid; grid-template-columns: 28px 1fr auto auto; align-items: center; gap: 10px; text-align: left; padding: 7px 10px; }
+.outcome { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: #fff; font-weight: 700; font-size: 13px; }
+.o-win { background: var(--best); }
+.o-loss { background: var(--blunder); }
+.o-draw { background: var(--good); }

@@ -17,9 +17,15 @@
   <section id="screen-input" class="screen">
     <div class="card narrow">
       <h1>Analysis</h1>
-      <p class="muted">Paste a finished game and we'll go through it together, move by move.</p>
+      <p class="muted">Pick one of your recent Chess.com games, or paste any game, and we'll go through it together, move by move.</p>
 
-      <label for="pgn">Your game (PGN)</label>
+      <label class="grow">Your Chess.com username
+        <input type="text" id="username" placeholder="shows your recent games and which side you played" autocomplete="off">
+      </label>
+      <h3>Your recent Chess.com games</h3>
+      <div id="recent" class="recent"></div>
+
+      <label for="pgn">Or paste any game (PGN)</label>
       <textarea id="pgn" rows="10" spellcheck="false"
         placeholder="On Chess.com: open the game → Share → PGN → Copy, then paste it here."></textarea>
       <div class="pgn-tools">
@@ -28,9 +34,6 @@
       </div>
 
       <div class="row">
-        <label class="grow">Your Chess.com username
-          <input type="text" id="username" placeholder="so we know which side you played" autocomplete="off">
-        </label>
         <label>Analysis depth
           <select id="depth">
             <option value="12">Fast</option>

@@ -17,7 +17,7 @@ import chess
 import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
 
-from . import book, openings, opponent
+from . import book, chesscom, openings, opponent
 from .positions import game_status, is_finished, replay, sans_of
 from .analysis import DEFAULT_DEPTH, analyze_pgn, rate_last_move, read_game
 
@@ -170,3 +170,12 @@ def rate():
         return jsonify({"error": str(exc)}), 400
     except FileNotFoundError as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@app.get("/api/chesscom/<username>")
+def chesscom_games(username):
+    """A player's recent Chess.com games (with PGNs), newest first."""
+    try:
+        return jsonify(chesscom.recent_games(username))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
