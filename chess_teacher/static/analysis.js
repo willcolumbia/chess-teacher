@@ -76,6 +76,13 @@ $("#file").addEventListener("change", async (e) => {
   if (file) $("#pgn").value = await file.text();
 });
 
+$("#clear-pgn").addEventListener("click", () => {
+  $("#pgn").value = "";
+  $("#file").value = ""; // so loading the same file again still works
+  showError("");
+  $("#pgn").focus();
+});
+
 $("#analyze").addEventListener("click", analyze);
 $("#new-game").addEventListener("click", () => show("input"));
 

@@ -22,7 +22,10 @@
       <label for="pgn">Your game (PGN)</label>
       <textarea id="pgn" rows="10" spellcheck="false"
         placeholder="On Chess.com: open the game → Share → PGN → Copy, then paste it here."></textarea>
-      <label class="file"><input type="file" id="file" accept=".pgn,text/plain"><span>…or load a .pgn file</span></label>
+      <div class="pgn-tools">
+        <label class="file"><input type="file" id="file" accept=".pgn,text/plain"><span>…or load a .pgn file</span></label>
+        <button type="button" id="clear-pgn" class="small-button">Clear</button>
+      </div>
 
       <div class="row">
         <label class="grow">Your Chess.com username

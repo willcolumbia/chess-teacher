@@ -334,3 +334,5 @@ button:disabled { opacity: 0.5; cursor: default; }
 .captured { display: inline-flex; align-items: center; flex-wrap: wrap; }
 .captured .piece { width: 18px; height: 18px; margin-right: -5px; }
 .captured .lead { margin-left: 9px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.pgn-tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pgn-tools .small-button { margin-top: 6px; }
