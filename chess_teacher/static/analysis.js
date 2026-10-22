@@ -22,6 +22,9 @@ const $ = (sel) => document.querySelector(sel);
 
 // step 0 = intro, steps 1..n = moves, step n+1 = summary.
 const state = { result: null, step: 0, view: "played", flipped: false, myColor: null };
+// "Show best move": the arrow appears first, then the move is played on the board.
+const bestMove = { played: false, timer: null };
+const BEST_MOVE_DELAY_MS = 900;
 // "Show why" playback: idea.index = null (off) or 0..line length; 0 is the starting position.
 const idea = { index: null, timer: null, kind: null };
 const IDEA_DELAY_MS = 1600;
@@ -198,6 +201,7 @@ function go(step) {
   idea.index = null;
   state.step = Math.max(0, Math.min(lastStep(), step));
   state.view = "played"; // the best move shows only when asked for
+  resetBestMove();
   render();
 }
 
@@ -227,10 +231,17 @@ function render() {
   if (showingIdea) {
     renderIdea(m);
   } else if (state.view === "better" && hasBetter) {
-    // "Show best move": the position before the move, with only the engine's choice (green).
-    renderBoard(m.fen_before, null, [[m.best_uci, "best"]]);
+    // "Show best move": the green arrow on the position before the move, then the move played.
+    const best = (m.best_line_moves || [])[0];
+    if (bestMove.played && best) {
+      const squares = [m.best_uci.slice(0, 2), m.best_uci.slice(2, 4)];
+      renderBoard(best.fen, squares, [[m.best_uci, "best"]], { square: squares[1], classification: "best" });
+      $("#caption").textContent = `Best move played: ${best.label}. ${best.description}`;
+    } else {
+      renderBoard(m.fen_before, null, [[m.best_uci, "best"]]);
+      $("#caption").textContent = `Position before ${moveLabel(m)}. Green: the engine's best move, ${m.best_san}.`;
+    }
     renderEval(m.eval_before);
-    $("#caption").textContent = `Position before ${moveLabel(m)}. Green: the engine's best move, ${m.best_san}.`;
   } else {
     // The move as played (yellow). The best move only shows after "Show best move".
     renderBoard(m.fen_after, [m.uci.slice(0, 2), m.uci.slice(2, 4)], [[m.uci, "last"]], moveIcon(m));
@@ -442,7 +453,20 @@ function setView(view) {
   stopIdea();
   idea.index = null;
   state.view = view;
+  resetBestMove();
+  if (view === "better") {
+    bestMove.timer = setTimeout(() => {
+      bestMove.played = true;
+      render();
+    }, BEST_MOVE_DELAY_MS);
+  }
   render();
+}
+
+function resetBestMove() {
+  clearTimeout(bestMove.timer);
+  bestMove.timer = null;
+  bestMove.played = false;
 }
 
 // ---------- "Show why": play out a line on the board ----------
