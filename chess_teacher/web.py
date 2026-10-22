@@ -18,7 +18,7 @@ import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
 
 from . import openings, opponent
-from .positions import game_status, replay, sans_of
+from .positions import game_status, is_finished, replay, sans_of
 from .analysis import DEFAULT_DEPTH, analyze_pgn, rate_last_move, read_game
 
 STATIC = Path(__file__).parent / "static"
@@ -108,7 +108,7 @@ def play():
         if isinstance(name, str) and name.strip():
             game.headers[side] = name.strip()[:60]
     game.headers["Date"] = date.today().strftime("%Y.%m.%d")
-    over = board.is_game_over(claim_draw=True)
+    over = is_finished(board)
     if over:
         game.headers["Result"] = board.result(claim_draw=True)
     return jsonify(

@@ -14,9 +14,9 @@ def game_status(board: chess.Board) -> str:
         return "Stalemate — draw"
     if board.is_insufficient_material():
         return "Draw — not enough material to checkmate"
-    if board.can_claim_threefold_repetition() or board.is_fivefold_repetition():
+    if board.is_repetition(3):
         return "Draw by repetition"
-    if board.can_claim_fifty_moves() or board.is_seventyfive_moves():
+    if board.halfmove_clock >= 100:
         return "Draw by the fifty-move rule"
     if board.is_check():
         return f"{side} to move — in check"
@@ -35,6 +35,16 @@ def replay(moves) -> chess.Board:
             raise ValueError(f"Illegal move {uci!r}.")
         board.push(move)
     return board
+
+
+def is_finished(board: chess.Board) -> bool:
+    """Is the game over, the way an online site ends it automatically?
+
+    Checkmate, stalemate, not enough material, the same position three times, or fifty
+    moves each without a capture or pawn move. Only a repetition that has actually
+    happened counts, not one that a move *could* make.
+    """
+    return board.is_game_over() or board.is_repetition(3) or board.halfmove_clock >= 100
 
 
 def sans_of(board: chess.Board) -> List[str]:
