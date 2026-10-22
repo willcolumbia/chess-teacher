@@ -205,6 +205,7 @@ class RuleExplainer(Explainer):
             self._stalemate(ctx, after, played)
             or self._allowed_mate(ctx, after, played)
             or self._missed_mate(ctx)
+            or self._missed_capture(ctx, best)
             or self._lost_material(ctx, after, played)
             or self._positional(ctx, played)
         )
@@ -256,6 +257,13 @@ class RuleExplainer(Explainer):
         if is_winning_mate(ctx.score_before) and not is_winning_mate(ctx.score_after):
             return f"You had a forced mate in {ctx.score_before.mate()} and missed it.", "missed-mate"
         return None
+
+    def _missed_capture(self, ctx, best):
+        if ctx.classification != "miss":
+            return None
+        gain, plies, _ = settle(ctx.board, ctx.best_line, ctx.mover)
+        line = line_san(ctx.board, ctx.best_line, plies=max(plies, 1))
+        return f"You missed {best}, which wins {points(gain)} of material: {line}.", "missed-capture"
 
     def _lost_material(self, ctx, after, played):
         me = ctx.mover

@@ -1,8 +1,8 @@
 "use strict";
 
-const BAD = ["inaccuracy", "mistake", "blunder"];
-const TABLE_CLASSES = ["book", "brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder"];
-const PLURALS = { inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
+const BAD = ["inaccuracy", "mistake", "miss", "blunder"];
+const TABLE_CLASSES = ["book", "brilliant", "great", "best", "good", "inaccuracy", "mistake", "miss", "blunder"];
+const PLURALS = { inaccuracy: "inaccuracies", mistake: "mistakes", miss: "misses", blunder: "blunders" };
 const PATTERNS = {
   "hanging-piece": "Leaving a piece where it can be taken",
   "fork": "Walking into a fork",
@@ -13,6 +13,7 @@ const PATTERNS = {
   "loses-material": "Losing material in an exchange",
   "allows-mate": "Allowing checkmate",
   "missed-mate": "Missing a checkmate",
+  "missed-capture": "Missing a free capture",
   "stalemate": "Stalemating a won position",
   "king-safety": "King safety",
   "development": "Slow development",

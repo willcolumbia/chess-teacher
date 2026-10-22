@@ -59,6 +59,7 @@ const ChessBoard = (() => {
     book: "Book",
     inaccuracy: "Inaccuracy",
     mistake: "Mistake",
+    miss: "Miss",
     blunder: "Blunder",
   };
   const GLYPHS = {
@@ -69,6 +70,7 @@ const ChessBoard = (() => {
     book: { path: "M5 5.5c1.8-.6 3.6-.4 5 .8 1.4-1.2 3.2-1.4 5-.8v9c-1.8-.6-3.6-.4-5 .8-1.4-1.2-3.2-1.4-5-.8z" },
     inaccuracy: { text: "?!" },
     mistake: { text: "?" },
+    miss: { path: "M6.5 6.5l7 7M13.5 6.5l-7 7", stroke: true },
     blunder: { text: "??" },
   };
 

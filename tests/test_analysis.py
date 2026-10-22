@@ -121,3 +121,20 @@ def test_book_positions_and_opening_name():
     assert "Italian" in book.opening_name(board)["name"]
     board.push_san("Qh4")  # nonsense
     assert not book.is_book(board)
+
+
+def test_missing_a_free_capture_is_a_miss():
+    import chess
+
+    from chess_teacher.analysis import is_miss
+
+    # Black's queen on d5 is hanging to the c4 pawn.
+    board = chess.Board("4k3/8/8/3q4/2P5/8/8/4K3 w - - 0 1")
+    take = board.parse_san("cxd5")
+    quiet = board.parse_san("Kf1")
+    reply = [chess.Move.from_uci("d5d4")]
+    assert is_miss(board, quiet, [take], reply)
+    assert not is_miss(board, take, [take], [])  # it was played
+    # Not a capture that wins anything: no miss.
+    calm = chess.Board("4k3/8/8/8/8/8/8/4K3 w - - 0 1")
+    assert not is_miss(calm, calm.parse_san("Kd2"), [calm.parse_san("Ke2")], [])

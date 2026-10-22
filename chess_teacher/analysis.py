@@ -14,15 +14,15 @@ from . import book
 from .engine import find_stockfish
 from .explain import Explainer, MoveContext, get_explainer
 from .explain.describe import describe_move, in_danger
-from .explain.rules import describe_tactic, line_san
+from .explain.rules import describe_tactic, line_san, settled_material_change
 
 DEFAULT_DEPTH = 16
 
 # Drop in the mover's winning chances (percentage points) for each label.
 # Inaccuracy starts lower than Lichess's 10 so smaller slips get flagged too.
 THRESHOLDS = [(30, "blunder"), (20, "mistake"), (5, "inaccuracy")]
-EXPLAINED = {"inaccuracy", "mistake", "blunder"}
-CLASSIFICATIONS = ["book", "brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder"]
+EXPLAINED = {"inaccuracy", "mistake", "miss", "blunder"}
+CLASSIFICATIONS = ["book", "brilliant", "great", "best", "good", "inaccuracy", "mistake", "miss", "blunder"]
 # "Great": the best move when every alternative loses at least this much winning chance.
 GREAT_GAP = 15
 
@@ -205,6 +205,26 @@ def evaluate(engine: chess.engine.SimpleEngine, board: chess.Board, limit) -> Ev
     return infos[0]["score"], infos[0].get("pv", []), second
 
 
+def is_miss(
+    board: chess.Board, move: chess.Move, best_line: List[chess.Move], reply_line: List[chess.Move]
+) -> bool:
+    """A missed capture: the best move took material for free (net +2 or more), but the
+    move played didn't win it, and didn't lose anything itself either (that's a blunder)."""
+    if not best_line or best_line[0] == move or not board.is_capture(best_line[0]):
+        return False
+    mover = board.turn
+    gain = settled_material_change(board, best_line, mover)
+    played = settled_material_change(board, [move] + reply_line, mover)
+    return gain >= 2 and played >= 0 and gain - played >= 2
+
+
+def relabel(label: str, board: chess.Board, move: chess.Move, best_line, reply_line) -> str:
+    """Refine an engine label: a bad move that only missed a free capture is a "miss"."""
+    if label in ("inaccuracy", "mistake", "blunder") and is_miss(board, move, best_line, reply_line):
+        label = "miss"
+    return label
+
+
 def after_board(board: chess.Board, move: chess.Move) -> chess.Board:
     after = board.copy(stack=False)
     after.push(move)
@@ -228,12 +248,13 @@ def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
     limit = chess.engine.Limit(depth=depth)
     with chess.engine.SimpleEngine.popen_uci(find_stockfish()) as engine:
         score_before, best_line, second = evaluate(engine, before, limit)
-        score_after, _, _ = evaluate(engine, after, limit)
+        score_after, reply_line, _ = evaluate(engine, after, limit)
     rel_before, rel_after = score_before.pov(mover), score_after.pov(mover)
     drop = max(0.0, win_percent(rel_before) - win_percent(rel_after))
     best_move = best_line[0] if best_line else move
     second_rel = second.pov(mover) if second else None
     label = classify(move, best_move, drop, rel_before, rel_after, second_rel, before)
+    label = relabel(label, before, move, best_line, reply_line)
     in_book = board.root() == chess.Board() and all(book.is_book(p) for p in _positions(board))
     if in_book and label not in EXPLAINED:
         label = "book"
@@ -290,6 +311,7 @@ def analyze_pgn(
         drop = max(0.0, win_percent(rel_before) - win_percent(rel_after))
         second_rel = second.pov(mover) if second else None
         label = classify(move, best_move, drop, rel_before, rel_after, second_rel, board)
+        label = relabel(label, board, move, best_line, reply_line)
         # Opening theory: "book" until the game leaves it. A move the engine calls an
         # inaccuracy or worse keeps that label, so it still gets explained.
         in_book = in_book and book.is_book(after_board(board, move))

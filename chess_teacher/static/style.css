@@ -275,6 +275,7 @@ button:disabled { opacity: 0.5; cursor: default; }
   --i-inaccuracy: #e6b422;
   --i-mistake: #f08a24;
   --i-blunder: #d9362b;
+  --i-miss: #ee6b55;
 }
 .mv-icon { width: 18px; height: 18px; flex: none; vertical-align: middle; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
 .mv-icon text { fill: #fff; font-weight: 800; font-family: system-ui, sans-serif; letter-spacing: -0.5px; }
@@ -288,6 +289,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 .i-inaccuracy circle { fill: var(--i-inaccuracy); }
 .i-mistake circle { fill: var(--i-mistake); }
 .i-blunder circle { fill: var(--i-blunder); }
+.i-miss circle { fill: var(--i-miss); }
 .sq .sq-icon { position: absolute; z-index: 3; top: 3%; right: 3%; width: 36%; height: 36%; pointer-events: none; }
 .with-icon { display: inline-flex; align-items: center; gap: 5px; }
 .class-label { font-size: 13px; font-weight: 700; text-transform: none; }
@@ -299,6 +301,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 .class-label.t-inaccuracy { color: var(--i-inaccuracy); }
 .class-label.t-mistake { color: var(--i-mistake); }
 .class-label.t-blunder { color: var(--i-blunder); }
+.class-label.t-miss { color: var(--i-miss); }
 .players th .mv-icon { width: 20px; height: 20px; }
 #moves { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .move-item { display: inline-flex; align-items: center; gap: 3px; }
@@ -347,3 +350,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .o-win { background: var(--best); }
 .o-loss { background: var(--blunder); }
 .o-draw { background: var(--good); }
+.timeline button.t-miss { background: var(--i-miss); opacity: 1; }
+.c-miss { background: var(--i-miss); }
+.c-book { background: var(--i-book); }
+.c-great { background: var(--i-great); }
+.c-brilliant { background: var(--i-brilliant); }
