@@ -314,3 +314,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 .step .idea-move { width: auto; padding: 3px 8px; font-size: 13px; }
 .step .list-item { display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 6px 6px 0 0; }
 .step .list-item .sub { display: inline; margin-left: 4px; }
+.san-row .row { gap: 6px; }
+
+/* Larger board on the Analysis and Openings pages */
+#screen-walk.screen, #screen-drill.screen { max-width: 1320px; }
+#screen-walk .walk, #screen-drill .walk { grid-template-columns: minmax(0, 600px) minmax(0, 1fr); }
+@media (max-width: 860px) {
+  #screen-walk .walk, #screen-drill .walk { grid-template-columns: minmax(0, 1fr); }
+}

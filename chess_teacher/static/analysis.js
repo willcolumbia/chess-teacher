@@ -368,8 +368,10 @@ function moveCard(m) {
     el("div", { class: "san-row" },
       el("div", { class: "san" }, moveLabel(m)),
       hasBetter
-        ? el("button", { onclick: () => setView(state.view === "better" ? "played" : "better") },
-            state.view === "better" ? "Show move played" : "Show best move")
+        ? el("div", { class: "row" },
+            el("button", { onclick: () => setView(state.view === "better" ? "played" : "better") },
+              state.view === "better" ? "Show move played" : "Show best move"),
+            ideaButton(m, "better"))
         : null),
     el("p", {}, m.description),
     el("p", {}, verdict(m)),
@@ -393,7 +395,7 @@ function moveCard(m) {
       el("h3", {}, yours ? "What you could have played" : "What they should have played"),
       el("p", {}, el("strong", {}, m.best_san), m.best_description ? ` — ${lowerFirst(m.best_description)}` : ""),
       m.best_line ? el("p", { class: "line" }, `Engine line: ${m.best_line}`) : null,
-      ideaSection(m, yours, "better")
+      ideaSection(m, yours, "better", false)
     );
   }
 
@@ -480,18 +482,24 @@ function ideaLine(m) {
   return idea.kind ? IDEA_KINDS[idea.kind].moves(m) : [];
 }
 
-function ideaSection(m, yours, kind) {
+// The button that starts (or closes) a playback; null when there's no line to play.
+function ideaButton(m, kind) {
+  const spec = IDEA_KINDS[kind];
+  if (!spec.moves(m).length) return null;
+  return idea.index !== null && idea.kind === kind
+    ? el("button", { onclick: closeIdea }, "✕ Close")
+    : el("button", { class: kind === "punish" ? "warn" : "primary", onclick: () => startIdea(kind) }, spec.button(m));
+}
+
+// The playback's move chips and closing note, shown while it is open.
+// withButton: also include the start/close button (the "better" one lives next to the move name).
+function ideaSection(m, yours, kind, withButton = true) {
   const spec = IDEA_KINDS[kind];
   const line = spec.moves(m);
   const active = idea.index !== null && idea.kind === kind;
   const box = el("div", { class: "idea" });
-  const buttons = el("div", { class: "row" });
-  if (line.length) {
-    buttons.append(active
-      ? el("button", { onclick: closeIdea }, "✕ Close")
-      : el("button", { class: kind === "punish" ? "warn" : "primary", onclick: () => startIdea(kind) }, spec.button(m)));
-  }
-  box.append(buttons);
+  const button = withButton ? ideaButton(m, kind) : null;
+  if (button) box.append(el("div", { class: "row" }, button));
 
   if (active) {
     const list = el("ol", { class: "idea-list" });
