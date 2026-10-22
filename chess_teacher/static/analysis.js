@@ -250,8 +250,16 @@ function render() {
   renderStep(moveCard(m));
 }
 
+let shownStep = null;
+
+// Re-renders of the same step (e.g. during "Show why" playback) keep the scroll position;
+// a new step starts at the top.
 function renderStep(nodes) {
-  $("#step").replaceChildren(...nodes);
+  const box = $("#step");
+  const scroll = shownStep === state.step ? box.scrollTop : 0;
+  box.replaceChildren(...nodes);
+  box.scrollTop = scroll;
+  shownStep = state.step;
 }
 
 // ---------- Step cards ----------
@@ -358,13 +366,15 @@ function verdict(m) {
 function moveCard(m) {
   const yours = isMine(m);
   const bad = BAD.includes(m.classification);
-  const nodes = [
+  const header = [
     el("div", { class: "who" },
       el("span", { class: "chip" + (yours ? " you" : "") }, yours ? "Your move" : "Opponent's move"),
       classBadge(m.classification),
       m.clock != null ? el("span", { class: "muted" }, `⏱ ${formatClock(m.clock)} left`) : null),
     el("div", { class: "san" }, moveLabel(m)),
-
+  ];
+  // Two columns side by side, so the panel stays the board's height instead of growing.
+  const nodes = [
     el("h3", {}, "What the move does"),
     el("p", {}, m.description),
 
@@ -377,8 +387,9 @@ function moveCard(m) {
     el("p", { class: "muted" }, `Evaluation: ${m.eval_before.text} → ${m.eval_after.text} (plus is good for White, minus for Black)`),
   ];
 
+  const right = [];
   if (bad && m.explanation) {
-    nodes.push(
+    right.push(
       el("h3", {}, "Why it's a problem"),
       el("p", { class: "callout c-warn" }, m.explanation),
       ideaSection(m, yours, "punish")
@@ -386,7 +397,7 @@ function moveCard(m) {
   }
 
   if (m.best_uci !== m.uci) {
-    nodes.push(
+    right.push(
       el("h3", {}, yours ? "What you could have played" : "What they should have played"),
       el("p", {}, el("strong", {}, m.best_san), m.best_description ? ` — ${lowerFirst(m.best_description)}` : ""),
       m.best_line ? el("p", { class: "line" }, `Engine line: ${m.best_line}`) : null,
@@ -405,7 +416,10 @@ function moveCard(m) {
       if (m.reply_line) nodes.push(el("p", { class: "line" }, `Engine line: ${m.reply_line}`));
     }
   }
-  return nodes;
+  return [
+    ...header,
+    el("div", { class: "step-cols" }, el("div", { class: "step-col" }, ...nodes), el("div", { class: "step-col" }, ...right)),
+  ];
 }
 
 function summaryCard() {
@@ -502,8 +516,7 @@ function ideaSection(m, yours, kind) {
       const tag = kind === "punish" && i === 0 ? ` · ${m.classification}` : "";
       list.append(el("li", { class: i + 1 === idea.index ? "current" : i + 1 < idea.index ? "done" : "" },
         el("button", { class: "idea-move", onclick: () => { pauseIdea(); idea.index = i + 1; render(); } },
-          el("strong", {}, ply.label), el("span", { class: "muted" }, ` · ${mover}${tag}`),
-          i + 1 === idea.index ? el("span", { class: "sub" }, ply.description) : null)));
+          el("strong", {}, ply.label), el("span", { class: "muted" }, ` · ${mover}${tag}`))));
     });
     box.append(list);
     if (idea.index === line.length) {
