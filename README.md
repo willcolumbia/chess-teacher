@@ -47,7 +47,7 @@ The site has two pages:
    - **What the move does** (develops, captures, attacks, defends, forks, …)
    - **Verdict** with the evaluation before and after
    - **Why it's a problem** for inaccuracies, mistakes and blunders
-   - **What you could have played**, shown on the board with arrows (red = played, blue = engine best)
+   - **What you could have played**, shown on the board with arrows (red = played, green = engine best, yellow = last move)
    - **Show why it's better**: plays out the engine's line on the board (up to 5 moves each), explaining each move
    - **Show why it's a mistake** (or **how to punish it**, for your opponent's mistakes): plays your move and what the engine expects to follow
    - **What to watch for next** / **your best reply**

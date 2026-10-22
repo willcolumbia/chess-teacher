@@ -247,7 +247,7 @@ function feedbackEntry(fb, playedLabel, fenBefore) {
       ? {
           fen: fenBefore,
           arrows: [[fb.played.uci, "played"], [exp.uci, "best"]],
-          caption: `Red: what you played (${fb.played.san}). Blue: the ${source} move (${exp.san}).`,
+          caption: `Red: what you played (${fb.played.san}). Green: the ${source} move (${exp.san}).`,
         }
       : null,
   };
@@ -276,7 +276,7 @@ function render() {
     icon: view ? null : state.mark,
   });
   ChessBoard.drawArrows($("#arrow-layer"), arrows, state.flipped);
-  $("#caption").textContent = view ? view.caption : state.hint >= 2 && state.expected ? `Blue: ${state.expected.san}` : "";
+  $("#caption").textContent = view ? view.caption : state.hint >= 2 && state.expected ? `Green: ${state.expected.san}` : "";
 
   $("#drill-variation").hidden = !state.variation;
   $("#drill-variation").textContent = state.variation || "";
@@ -352,7 +352,7 @@ function renderPrompt() {
   if (state.busy || !state.expected) return box.replaceChildren(el("p", { class: "muted" }, "…"));
   const nodes = [el("p", {}, el("strong", {}, "Your move."), state.expected.source === "book" ? " Play the book move." : " Play Stockfish's recommended move.")];
   if (state.hint >= 1) nodes.push(el("p", { class: "hint" }, `Hint: ${state.expected.idea}`));
-  if (state.hint >= 2) nodes.push(el("p", { class: "hint" }, `The move is ${state.expected.san} (blue arrow).`));
+  if (state.hint >= 2) nodes.push(el("p", { class: "hint" }, `The move is ${state.expected.san} (green arrow).`));
   nodes.push(el("div", { class: "row" },
     state.hint < 1 ? el("button", { onclick: () => setHint(1) }, "Hint") : null,
     state.hint < 2 ? el("button", { onclick: () => setHint(2) }, "Show the move") : null));
