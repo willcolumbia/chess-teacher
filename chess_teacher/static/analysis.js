@@ -205,9 +205,6 @@ function go(step) {
 
 function render() {
   const m = moves()[state.step - 1] || null;
-  const top = state.flipped ? "white" : "black";
-  $("#top-player").textContent = playerName(top);
-  $("#bottom-player").textContent = playerName(top === "white" ? "black" : "white");
 
   [...$("#timeline").children].forEach((b, i) => b.classList.toggle("current", i === state.step - 1));
   $("#counter").textContent =
@@ -218,12 +215,7 @@ function render() {
 
   const hasBetter = m && m.best_uci !== m.uci;
   const showingIdea = m && idea.index !== null;
-  $("#board-tabs").hidden = showingIdea;
-  $("#board-tabs").style.visibility = hasBetter ? "" : "hidden"; // keep its space so the column height doesn't change
   $("#idea-controls").hidden = !showingIdea;
-  for (const tab of document.querySelectorAll("[data-view]")) {
-    tab.classList.toggle("active", tab.dataset.view === state.view);
-  }
 
   if (!m) {
     const fen = state.step === 0 ? state.result.start_fen : state.result.final_fen;
@@ -587,6 +579,7 @@ function closeIdea() {
 
 function renderBoard(fen, highlight, arrows, icon = null) {
   ChessBoard.render($("#board"), fen, { flipped: state.flipped, highlight: highlight || [], icon });
+  renderPlayers(fen);
   ChessBoard.drawArrows($("#arrow-layer"), arrows || [], state.flipped);
 }
 
@@ -614,7 +607,6 @@ $("#idea-play").addEventListener("click", () => (idea.timer ? pauseIdea() : play
 $("#idea-next").addEventListener("click", () => stepIdea(1));
 $("#idea-close").addEventListener("click", closeIdea);
 $("#next").addEventListener("click", () => go(state.step + 1));
-document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
 
 document.addEventListener("keydown", (e) => {
   if ($("#screen-walk").hidden) return;
@@ -650,10 +642,27 @@ document.addEventListener("keydown", (e) => {
 });
 
 // The move panel is exactly as tall as the board column, whatever the move says.
+// Player names above and below the board, each with the pieces they've captured in `fen`.
+function renderPlayers(fen) {
+  const top = state.flipped ? "white" : "black";
+  const bottom = top === "white" ? "black" : "white";
+  for (const [id, color] of [["#top-player", top], ["#bottom-player", bottom]]) {
+    $(id).replaceChildren(el("span", {}, playerName(color)), ChessBoard.capturedRow(fen, color));
+  }
+  syncPanelHeight();
+}
+
+// The move panel lines up with the board itself: same top edge, same height.
 function syncPanelHeight() {
   const step = $("#step");
-  const narrow = window.matchMedia("(max-width: 860px)").matches;
-  step.style.height = narrow ? "" : `${$(".board-col").offsetHeight}px`;
+  if (window.matchMedia("(max-width: 860px)").matches) {
+    step.style.height = step.style.marginTop = "";
+    return;
+  }
+  const board = $("#board").getBoundingClientRect();
+  const column = $(".board-col").getBoundingClientRect();
+  step.style.marginTop = `${board.top - column.top}px`;
+  step.style.height = `${board.height}px`;
 }
-if (window.ResizeObserver) new ResizeObserver(syncPanelHeight).observe($(".board-col"));
+if (window.ResizeObserver) new ResizeObserver(syncPanelHeight).observe($("#board"));
 window.addEventListener("resize", syncPanelHeight);

@@ -322,3 +322,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 @media (max-width: 860px) {
   #screen-walk .walk, #screen-drill .walk { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Captured pieces next to player names */
+.player { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+.captured { display: inline-flex; align-items: center; flex-wrap: wrap; }
+.captured .piece { width: 18px; height: 18px; margin-right: -5px; }
+.captured .lead { margin-left: 9px; font-size: 13px; font-weight: 600; color: var(--muted); }

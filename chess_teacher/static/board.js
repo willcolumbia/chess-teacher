@@ -233,5 +233,44 @@ const ChessBoard = (() => {
     boardEl.addEventListener("pointercancel", (e) => endDrag(e, true));
   }
 
-  return { render, drawArrows, pieceAt, pieceImage, attachInput, icon, LABELS };
+  // ---------- Captured material ----------
+
+  const START = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+  const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+
+  // Pieces each side has taken, worked out from what's missing on the board.
+  // { white: ["p", "n", ...] (black pieces White took), black: [...], lead: White's material lead }
+  function captured(fen) {
+    const counts = { w: {}, b: {} };
+    for (const row of parseFen(fen)) {
+      for (const piece of row) {
+        if (!piece) continue;
+        const side = piece === piece.toUpperCase() ? "w" : "b";
+        const type = piece.toLowerCase();
+        counts[side][type] = (counts[side][type] || 0) + 1;
+      }
+    }
+    const taken = (side) => {
+      const out = [];
+      for (const type of ["p", "n", "b", "r", "q"]) {
+        for (let i = (counts[side][type] || 0); i < START[type]; i++) out.push(type);
+      }
+      return out;
+    };
+    const material = (side) => Object.entries(counts[side]).reduce((sum, [t, n]) => sum + (VALUE[t] || 0) * n, 0);
+    return { white: taken("b"), black: taken("w"), lead: material("w") - material("b") };
+  }
+
+  // Small icons of the pieces `color` has captured, plus "+N" if that side is ahead.
+  function capturedRow(fen, color) {
+    const info = captured(fen);
+    const box = make("span", "captured");
+    const victim = color === "white" ? (t) => t : (t) => t.toUpperCase();
+    for (const type of info[color]) box.append(pieceImage(victim(type)));
+    const lead = color === "white" ? info.lead : -info.lead;
+    if (lead > 0) box.append(make("span", "lead", `+${lead}`));
+    return box;
+  }
+
+  return { render, drawArrows, pieceAt, pieceImage, attachInput, icon, LABELS, captured, capturedRow };
 })();
