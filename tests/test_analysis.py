@@ -91,3 +91,19 @@ def test_sound_sacrifice_is_brilliant_but_a_trade_is_not():
     trade = chess.Board("3rk3/2p5/8/8/8/8/8/3RK3 w - - 0 1")
     rxd8 = trade.parse_san("Rxd8+")
     assert classify(rxd8, rxd8, 0, cp(0), cp(0), None, trade) == "best"
+
+
+def test_castling_and_en_passant_can_be_rated():
+    import chess
+    import chess.engine
+
+    from chess_teacher.analysis import classify
+
+    cp = chess.engine.Cp
+    board = chess.Board("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1")
+    for san in ("O-O", "O-O-O"):
+        move = board.parse_san(san)
+        assert classify(move, move, 0, cp(20), cp(20), None, board) == "best"
+    ep = chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1")
+    move = ep.parse_san("exd6")
+    assert classify(move, move, 0, cp(20), cp(20), None, ep) == "best"

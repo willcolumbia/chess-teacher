@@ -11,6 +11,8 @@ from .rules import PIECE_VALUES, captured_piece, describe_tactic, name, sq
 def in_danger(board: chess.Board, square: chess.Square) -> bool:
     """Is the piece on `square` attacked and either undefended or attacked by something cheaper?"""
     piece = board.piece_at(square)
+    if piece is None:
+        return False
     them = not piece.color
     attackers = board.attackers(them, square)
     if not attackers:

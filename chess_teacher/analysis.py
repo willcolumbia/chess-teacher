@@ -91,7 +91,8 @@ def sacrificed_value(board: chess.Board, move: chess.Move) -> int:
     for square, piece in after.piece_map().items():
         if piece.color != mover or piece.piece_type in (chess.PAWN, chess.KING):
             continue
-        was_safe = square == move.to_square or not in_danger(board, square)
+        # A piece that just arrived (the moved piece, or the rook when castling) wasn't in danger before.
+        was_safe = board.piece_at(square) != piece or not in_danger(board, square)
         if was_safe and in_danger(after, square):
             given = max(given, VALUES[piece.piece_type])
     taken = VALUES[board.piece_type_at(move.to_square)] if board.is_capture(move) and not board.is_en_passant(move) else 0
