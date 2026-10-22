@@ -29,6 +29,17 @@ const ChessBoard = (() => {
     return parseFen(fen)[7 - rank][file];
   }
 
+  // En passant: the capturing pawn lands on the empty square behind the enemy pawn, but most
+  // people try to drop it on the enemy pawn itself. Accept that too: returns
+  // { alias: square of the pawn being taken, target: the real landing square } or null.
+  function enPassantAlias(fen, from, targets) {
+    const ep = fen.split(" ")[3];
+    if (!ep || ep === "-" || !targets.includes(ep)) return null;
+    const piece = pieceAt(fen, from);
+    if (!piece || piece.toLowerCase() !== "p") return null;
+    return { alias: ep[0] + from[1], target: ep };
+  }
+
   function pieceImage(piece) {
     const color = piece === piece.toUpperCase() ? "w" : "b";
     const img = make("img", "piece");
@@ -98,6 +109,8 @@ const ChessBoard = (() => {
   // targets (squares to mark as legal destinations), icon ({ square, classification }).
   function render(boardEl, fen, { flipped = false, highlight = [], selected = null, targets = [], icon: mark = null } = {}) {
     const grid = parseFen(fen);
+    const ep = selected ? enPassantAlias(fen, selected, targets) : null;
+    if (ep) targets = [...targets, ep.alias]; // ring the pawn that en passant would take
     boardEl.replaceChildren();
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
@@ -167,6 +180,18 @@ const ChessBoard = (() => {
   function attachInput(boardEl, hooks) {
     let drag = null; // { from, ghost, size, moved, wasSelected }
 
+    // Legal destinations, plus the en passant victim's square as a stand-in for the real one.
+    function targets(square) {
+      const list = hooks.targetsFrom(square);
+      const ep = enPassantAlias(hooks.fen(), square, list);
+      return ep ? [...list, ep.alias] : list;
+    }
+
+    function move(from, to) {
+      const ep = enPassantAlias(hooks.fen(), from, hooks.targetsFrom(from));
+      hooks.move(from, ep && to === ep.alias ? ep.target : to);
+    }
+
     function squareAt(x, y) {
       const hit = document.elementFromPoint(x, y);
       const sq = hit && hit.closest(".sq");
@@ -185,11 +210,11 @@ const ChessBoard = (() => {
       if (hooks.touched) hooks.touched();
 
       const selected = hooks.selected();
-      if (selected && hooks.targetsFrom(selected).includes(square)) {
-        hooks.move(selected, square);
+      if (selected && targets(selected).includes(square)) {
+        move(selected, square);
         return;
       }
-      if (!hooks.targetsFrom(square).length) {
+      if (!targets(square).length) {
         hooks.select(null);
         return;
       }
@@ -222,8 +247,8 @@ const ChessBoard = (() => {
       drag = null;
       ghost.remove();
       const to = cancelled ? null : squareAt(e.clientX, e.clientY);
-      if (to && to !== from && hooks.targetsFrom(from).includes(to)) {
-        hooks.move(from, to);
+      if (to && to !== from && targets(from).includes(to)) {
+        move(from, to);
       } else {
         // A second click on a piece puts it down; otherwise it stays selected
         // so a click on a target square finishes the move.
