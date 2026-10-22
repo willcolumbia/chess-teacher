@@ -237,3 +237,27 @@ button:disabled { opacity: 0.5; cursor: default; }
 .elo .row { align-items: center; flex-wrap: nowrap; }
 .elo input[type="range"] { flex: 1; accent-color: var(--accent); }
 .setup #opponent { margin: 8px 0 0; }
+
+/* Openings */
+.screen > .segmented { margin: 16px 0; }
+.opening-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.opening-card { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 14px; border-radius: 12px; background: var(--surface); }
+.opening-card strong { font-size: 17px; }
+.opening-card .summary { font-size: 14px; }
+.small-progress { height: 6px; margin: 10px 0 16px; }
+.board-buttons { margin-top: 8px; gap: 6px; }
+.coach { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.log { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.entry { border-radius: 8px; padding: 10px 12px; background: var(--bg); font-size: 14px; }
+.entry-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.entry.info { background: none; border: 1px dashed var(--border); color: var(--muted); }
+.entry.you { border-left: 4px solid var(--best); }
+.entry.you.miss { border-left-color: var(--mistake); }
+.entry.them { border-left: 4px solid var(--arrow-reply); }
+.entry .expected { margin-top: 6px; font-weight: 600; }
+.entry.recap { background: var(--surface); border: 1px solid var(--accent); }
+.entry.recap .row { margin-top: 10px; gap: 6px; }
+.small-button { margin-top: 8px; padding: 4px 10px; font-size: 13px; }
+.prompt { border-top: 1px solid var(--border); padding-top: 10px; }
+.prompt .row { gap: 6px; }
+.hint { color: var(--accent); }

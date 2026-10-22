@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Openings · Chess Teacher</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <a class="brand" href="/">Chess Teacher</a>
+    <a href="/">Home</a>
+    <a href="/openings" class="active" aria-current="page">Openings</a>
+    <a href="/analysis">Analysis</a>
+  </nav>
+
+  <!-- Pick an opening -->
+  <section id="screen-pick" class="screen">
+    <h1>Openings</h1>
+    <p class="muted">Pick a side and an opening. You play the moves; the coach tells you the book move, the idea behind it, and what Stockfish thinks when you go your own way.</p>
+    <div class="segmented" role="group" aria-label="Your side">
+      <button data-side="white">I play White</button>
+      <button data-side="black">I play Black</button>
+    </div>
+    <div id="opening-list" class="opening-list"></div>
+    <p id="pick-error" class="error" hidden></p>
+  </section>
+
+  <!-- Drill -->
+  <section id="screen-drill" class="screen" hidden>
+    <header class="walk-head">
+      <div>
+        <strong id="drill-title"></strong>
+        <span class="chip" id="drill-variation" hidden></span>
+        <span class="chip" id="drill-book"></span>
+      </div>
+      <button id="choose">Choose another opening</button>
+    </header>
+    <div class="progress small-progress"><div class="bar" id="drill-progress"></div></div>
+
+    <div class="walk">
+      <div class="board-col">
+        <div class="board-area">
+          <div id="board" class="board playable" aria-label="Chess board"></div>
+          <svg id="arrows" class="arrows" viewBox="0 0 8 8" aria-hidden="true">
+            <defs>
+              <marker id="head-best" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-best-head"/></marker>
+              <marker id="head-played" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-played-head"/></marker>
+            </defs>
+            <g id="arrow-layer"></g>
+          </svg>
+        </div>
+        <p class="caption muted" id="caption"></p>
+        <div class="row board-buttons">
+          <button id="restart">Restart</button>
+          <button id="flip">Flip</button>
+        </div>
+      </div>
+
+      <div class="card coach">
+        <div id="log" class="log"></div>
+        <div id="prompt" class="prompt"></div>
+        <p id="drill-error" class="error" hidden></p>
+      </div>
+    </div>
+  </section>
+
+  <script src="/static/board.js"></script>
+  <script src="/static/openings.js"></script>
+</body>
+</html>

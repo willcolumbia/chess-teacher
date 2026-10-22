@@ -25,7 +25,6 @@ const state = {
   myColor: "white", // the side you actually play this game
   thinking: false,
 };
-let drag = null; // { from, ghost, moved }
 let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
 
 const STOCKFISH_MIN_ELO = 1320; // below this the engine's strength is our approximation
@@ -215,72 +214,18 @@ function showError(msg) {
 
 // ---------- Click and drag ----------
 
-function squareAt(x, y) {
-  const hit = document.elementFromPoint(x, y);
-  const sq = hit && hit.closest(".sq");
-  return sq && boardEl.contains(sq) ? sq.dataset.square : null;
-}
-
-boardEl.addEventListener("pointerdown", (e) => {
-  const sq = e.target.closest(".sq");
-  if (!sq || !$("#promotion").hidden || !canMove()) return;
-  const square = sq.dataset.square;
-  showError("");
-
-  if (state.selected && targetsFrom(state.selected).includes(square)) {
-    tryMove(state.selected, square);
-    return;
-  }
-  if (!targetsFrom(square).length) {
-    state.selected = null;
+ChessBoard.attachInput(boardEl, {
+  canMove: () => $("#promotion").hidden && canMove(),
+  targetsFrom,
+  fen: () => state.fen,
+  selected: () => state.selected,
+  select: (square) => {
+    state.selected = square;
     render();
-    return;
-  }
-
-  // Pick up a piece that can move.
-  const wasSelected = state.selected === square;
-  state.selected = square;
-  render();
-  const img = boardEl.querySelector(`[data-square="${square}"] .piece`);
-  const size = img.getBoundingClientRect().width;
-  const ghost = ChessBoard.pieceImage(ChessBoard.pieceAt(state.fen, square));
-  ghost.classList.add("ghost");
-  ghost.style.width = ghost.style.height = `${size}px`;
-  document.body.append(ghost);
-  img.classList.add("lifted");
-  drag = { from: square, ghost, size, moved: false, wasSelected };
-  moveGhost(e.clientX, e.clientY);
-  boardEl.setPointerCapture(e.pointerId);
-  e.preventDefault();
+  },
+  move: tryMove,
+  touched: () => showError(""),
 });
-
-function moveGhost(x, y) {
-  drag.ghost.style.left = `${x - drag.size / 2}px`;
-  drag.ghost.style.top = `${y - drag.size / 2}px`;
-}
-
-boardEl.addEventListener("pointermove", (e) => {
-  if (!drag) return;
-  drag.moved = true;
-  moveGhost(e.clientX, e.clientY);
-});
-
-function endDrag(e, cancelled) {
-  if (!drag) return;
-  const { from, ghost, moved, wasSelected } = drag;
-  drag = null;
-  ghost.remove();
-  const to = cancelled ? null : squareAt(e.clientX, e.clientY);
-  if (to && to !== from && targetsFrom(from).includes(to)) {
-    tryMove(from, to);
-  } else {
-    if (!moved && wasSelected) state.selected = null; // second click on a piece puts it down
-    render(); // otherwise stay selected so a click on a target square finishes the move
-  }
-}
-
-boardEl.addEventListener("pointerup", (e) => endDrag(e, false));
-boardEl.addEventListener("pointercancel", (e) => endDrag(e, true));
 
 // ---------- Buttons ----------
 

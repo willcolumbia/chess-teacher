@@ -31,6 +31,13 @@ The site has two pages:
     with a shallow search and some randomness, so those ratings are approximate.
   - Undo (takes back your move and Stockfish's reply), new game, flip, and **Analyze this game**,
     which sends the game to the Analysis page.
+- **Openings** (`/openings`): learn 6 openings for White and 7 for Black. Pick a side and an opening,
+  then play the moves yourself. The coach explains the idea behind each book move; your opponent varies
+  between the book's main variations. If you play something else, the move stays and the coach shows
+  the book move and Stockfish's verdict on yours. When the book line ends (or you leave it), Stockfish
+  recommends the moves, for about 10 moves in total. Hint / Show the move buttons help when you're stuck.
+  The book lives in `chess_teacher/opening_book.py`; `scripts/check_openings.py` checks every book move
+  with Stockfish.
 - **Analysis** (`/analysis`): a move-by-move review of a finished game:
 
 1. On Chess.com, open the game → **Share** → **PGN** → copy.
@@ -62,9 +69,13 @@ chess_teacher/
     base.py          # MoveContext / Explainer interface
     rules.py         # rule-based explanations (hanging pieces, forks, pins, missed mates, ...)
   opponent.py        # Stockfish as an opponent at an adjustable Elo
+  opening_book.py    # opening lines with the idea behind each move
+  openings.py        # Openings trainer: book tree, move feedback, opponent replies
+  positions.py       # helpers for positions built from UCI move lists
   web.py             # Flask pages, analysis jobs, /api/play (legal moves) and /api/engine-move
   static/
     home.html/.js    # playable board (Home)
+    openings.html/.js  # opening trainer (Openings)
     analysis.html/.js  # move-by-move review (Analysis)
     board.js         # board and arrow drawing shared by both pages
 ```

@@ -2,6 +2,7 @@
 
 /          a playable board, for two players or against Stockfish
            (moves are checked by /api/play; the engine answers via /api/engine-move)
+/openings  opening trainer (/api/openings, /api/openings/turn)
 /analysis  paste a PGN; analysis runs in a background thread and the page polls for it
 """
 from __future__ import annotations
@@ -16,7 +17,8 @@ import chess
 import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
 
-from . import opponent
+from . import openings, opponent
+from .positions import game_status, replay, sans_of
 from .analysis import DEFAULT_DEPTH, analyze_pgn, read_game
 
 STATIC = Path(__file__).parent / "static"
@@ -44,6 +46,11 @@ def run_job(job_id: str, pgn: str, depth: int) -> None:
 @app.get("/")
 def home():
     return send_from_directory(STATIC, "home.html")
+
+
+@app.get("/openings")
+def openings_page():
+    return send_from_directory(STATIC, "openings.html")
 
 
 @app.get("/analysis")
@@ -84,37 +91,6 @@ def job_status(job_id):
         return jsonify(dict(job))
 
 
-def game_status(board: chess.Board) -> str:
-    side = "White" if board.turn == chess.WHITE else "Black"
-    if board.is_checkmate():
-        return f"Checkmate — {'Black' if board.turn == chess.WHITE else 'White'} wins"
-    if board.is_stalemate():
-        return "Stalemate — draw"
-    if board.is_insufficient_material():
-        return "Draw — not enough material to checkmate"
-    if board.can_claim_threefold_repetition() or board.is_fivefold_repetition():
-        return "Draw by repetition"
-    if board.can_claim_fifty_moves() or board.is_seventyfive_moves():
-        return "Draw by the fifty-move rule"
-    if board.is_check():
-        return f"{side} to move — in check"
-    return f"{side} to move"
-
-
-def replay(moves) -> chess.Board:
-    """Play UCI `moves` from the start position. Raises ValueError on a bad or illegal move."""
-    board = chess.Board()
-    for uci in moves or []:
-        try:
-            move = chess.Move.from_uci(uci)
-        except ValueError:
-            raise ValueError(f"Bad move {uci!r}.")
-        if move not in board.legal_moves:
-            raise ValueError(f"Illegal move {uci!r}.")
-        board.push(move)
-    return board
-
-
 @app.post("/api/play")
 def play():
     """Replay `moves` (UCI) from the start position; return the position and its legal moves."""
@@ -123,11 +99,7 @@ def play():
         board = replay(body.get("moves"))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    sans = []
-    walk = chess.Board()
-    for move in board.move_stack:
-        sans.append(walk.san(move))
-        walk.push(move)
+    sans = sans_of(board)
 
     game = chess.pgn.Game.from_board(board)
     game.headers["Event"] = "Casual game"
@@ -165,3 +137,19 @@ def engine_move():
     except FileNotFoundError as exc:
         return jsonify({"error": str(exc)}), 500
     return jsonify({"uci": move.uci(), "elo": max(opponent.MIN_ELO, min(opponent.MAX_ELO, elo))})
+
+
+@app.get("/api/openings")
+def openings_list():
+    return jsonify(openings.list_openings())
+
+
+@app.post("/api/openings/turn")
+def openings_turn():
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(openings.turn(str(body.get("opening")), body.get("moves") or []))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 500
