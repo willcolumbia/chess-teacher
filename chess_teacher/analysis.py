@@ -10,6 +10,7 @@ import chess
 import chess.engine
 import chess.pgn
 
+from . import book
 from .engine import find_stockfish
 from .explain import Explainer, MoveContext, get_explainer
 from .explain.describe import describe_move, in_danger
@@ -21,7 +22,7 @@ DEFAULT_DEPTH = 16
 # Inaccuracy starts lower than Lichess's 10 so smaller slips get flagged too.
 THRESHOLDS = [(30, "blunder"), (20, "mistake"), (5, "inaccuracy")]
 EXPLAINED = {"inaccuracy", "mistake", "blunder"}
-CLASSIFICATIONS = ["brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder"]
+CLASSIFICATIONS = ["book", "brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder"]
 # "Great": the best move when every alternative loses at least this much winning chance.
 GREAT_GAP = 15
 
@@ -204,6 +205,20 @@ def evaluate(engine: chess.engine.SimpleEngine, board: chess.Board, limit) -> Ev
     return infos[0]["score"], infos[0].get("pv", []), second
 
 
+def after_board(board: chess.Board, move: chess.Move) -> chess.Board:
+    after = board.copy(stack=False)
+    after.push(move)
+    return after
+
+
+def _positions(board: chess.Board):
+    """Every position reached in the game on `board`, after each move."""
+    walk = board.root()
+    for move in board.move_stack:
+        walk.push(move)
+        yield walk
+
+
 def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
     """Classify the last move played on `board` (which must have a move stack)."""
     after = board.copy()
@@ -219,6 +234,9 @@ def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
     best_move = best_line[0] if best_line else move
     second_rel = second.pov(mover) if second else None
     label = classify(move, best_move, drop, rel_before, rel_after, second_rel, before)
+    in_book = board.root() == chess.Board() and all(book.is_book(p) for p in _positions(board))
+    if in_book and label not in EXPLAINED:
+        label = "book"
     return {"uci": move.uci(), "classification": label, "win_drop": round(drop, 1), "best_uci": best_move.uci()}
 
 
@@ -261,6 +279,7 @@ def analyze_pgn(
 
     moves = []
     board = start.copy()
+    in_book = start == chess.Board()  # only standard games start in the book
     for i, node in enumerate(nodes):
         move = node.move
         mover = board.turn
@@ -271,6 +290,11 @@ def analyze_pgn(
         drop = max(0.0, win_percent(rel_before) - win_percent(rel_after))
         second_rel = second.pov(mover) if second else None
         label = classify(move, best_move, drop, rel_before, rel_after, second_rel, board)
+        # Opening theory: "book" until the game leaves it. A move the engine calls an
+        # inaccuracy or worse keeps that label, so it still gets explained.
+        in_book = in_book and book.is_book(after_board(board, move))
+        if in_book and label not in EXPLAINED:
+            label = "book"
 
         explanation, problem, themes = None, None, []
         if label in EXPLAINED:
@@ -330,6 +354,7 @@ def analyze_pgn(
 
     return {
         "headers": dict(game.headers),
+        "opening": book.opening_name(board),
         "start_fen": start.fen(),
         "final_fen": board.fen(),
         "depth": depth,

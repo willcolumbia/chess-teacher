@@ -17,7 +17,7 @@ import chess
 import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
 
-from . import openings, opponent
+from . import book, openings, opponent
 from .positions import game_status, is_finished, replay, sans_of
 from .analysis import DEFAULT_DEPTH, analyze_pgn, rate_last_move, read_game
 
@@ -25,6 +25,8 @@ STATIC = Path(__file__).parent / "static"
 MAX_JOBS = 50
 
 app = Flask(__name__, static_folder=None)
+# The opening book takes a few seconds to load; do it in the background at startup.
+threading.Thread(target=book._load, daemon=True).start()
 jobs: Dict[str, Dict] = {}
 jobs_lock = threading.Lock()
 

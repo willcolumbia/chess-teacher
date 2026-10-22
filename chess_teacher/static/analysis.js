@@ -1,7 +1,7 @@
 "use strict";
 
 const BAD = ["inaccuracy", "mistake", "blunder"];
-const TABLE_CLASSES = ["brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder"];
+const TABLE_CLASSES = ["book", "brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder"];
 const PLURALS = { inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
 const PATTERNS = {
   "hanging-piece": "Leaving a piece where it can be taken",
@@ -171,7 +171,8 @@ function start(color) {
   state.view = "played";
   const h = state.result.headers;
   $("#game-title").textContent = `${h.White || "White"} vs ${h.Black || "Black"}`;
-  $("#game-sub").textContent = [h.Result, h.Termination, h.Date].filter((x) => x && x !== "?").join(" · ");
+  const opening = state.result.opening ? `${state.result.opening.eco} ${state.result.opening.name}` : null;
+  $("#game-sub").textContent = [opening, h.Result, h.Termination, h.Date].filter((x) => x && x !== "?").join(" · ");
   buildTimeline();
   show("walk");
   render();
@@ -354,6 +355,8 @@ function verdict(m) {
   const yours = isMine(m);
   const whose = yours ? "your" : "their";
   switch (m.classification) {
+    case "book":
+      return `Book move — standard opening theory${state.result.opening ? ` (${state.result.opening.name})` : ""}.`;
     case "brilliant":
       return "Brilliant! A sacrifice that works: it gives up material, and it's still the engine's best move.";
     case "great":

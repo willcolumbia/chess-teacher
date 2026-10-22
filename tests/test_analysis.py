@@ -107,3 +107,17 @@ def test_castling_and_en_passant_can_be_rated():
     ep = chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1")
     move = ep.parse_san("exd6")
     assert classify(move, move, 0, cp(20), cp(20), None, ep) == "best"
+
+
+def test_book_positions_and_opening_name():
+    import chess
+
+    from chess_teacher import book
+
+    board = chess.Board()
+    for san in ["e4", "e5", "Nf3", "Nc6", "Bc4"]:
+        board.push_san(san)
+        assert book.is_book(board)
+    assert "Italian" in book.opening_name(board)["name"]
+    board.push_san("Qh4")  # nonsense
+    assert not book.is_book(board)
