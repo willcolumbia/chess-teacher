@@ -239,7 +239,7 @@ def analyze_pgn(
         second_rel = second.pov(mover) if second else None
         label = classify(move, best_move, drop, rel_before, rel_after, second_rel, board)
 
-        explanation, themes = None, []
+        explanation, problem, themes = None, None, []
         if label in EXPLAINED:
             result = explainer.explain(
                 MoveContext(
@@ -253,7 +253,7 @@ def analyze_pgn(
                     classification=label,
                 )
             )
-            explanation, themes = result.text, result.themes
+            explanation, problem, themes = result.text, result.summary or result.text, result.themes
 
         after = board.copy(stack=False)
         after.push(move)
@@ -289,6 +289,7 @@ def analyze_pgn(
                 "eval_after": score_json(score_after),
                 "clock": node.clock(),
                 "explanation": explanation,
+                "problem": problem,
                 "themes": themes,
             }
         )

@@ -231,7 +231,7 @@ class RuleExplainer(Explainer):
             f"Evaluation for you: {format_score(ctx.score_before)} with {best}, "
             f"{format_score(ctx.score_after)} after {played}."
         )
-        return Explanation(text=" ".join(parts), themes=themes)
+        return Explanation(text=" ".join(parts), themes=themes, summary=problem[0])
 
     # Each rule returns (sentence, theme) or None.
 

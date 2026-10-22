@@ -218,7 +218,8 @@ function render() {
 
   const hasBetter = m && m.best_uci !== m.uci;
   const showingIdea = m && idea.index !== null;
-  $("#board-tabs").hidden = !hasBetter || showingIdea;
+  $("#board-tabs").hidden = showingIdea;
+  $("#board-tabs").style.visibility = hasBetter ? "" : "hidden"; // keep its space so the column height doesn't change
   $("#idea-controls").hidden = !showingIdea;
   for (const tab of document.querySelectorAll("[data-view]")) {
     tab.classList.toggle("active", tab.dataset.view === state.view);
@@ -250,16 +251,8 @@ function render() {
   renderStep(moveCard(m));
 }
 
-let shownStep = null;
-
-// Re-renders of the same step (e.g. during "Show why" playback) keep the scroll position;
-// a new step starts at the top.
 function renderStep(nodes) {
-  const box = $("#step");
-  const scroll = shownStep === state.step ? box.scrollTop : 0;
-  box.replaceChildren(...nodes);
-  box.scrollTop = scroll;
-  shownStep = state.step;
+  $("#step").replaceChildren(...nodes);
 }
 
 // ---------- Step cards ----------
@@ -366,38 +359,37 @@ function verdict(m) {
 function moveCard(m) {
   const yours = isMine(m);
   const bad = BAD.includes(m.classification);
-  const header = [
+  const hasBetter = m.best_uci !== m.uci;
+  const nodes = [
     el("div", { class: "who" },
       el("span", { class: "chip" + (yours ? " you" : "") }, yours ? "Your move" : "Opponent's move"),
       classBadge(m.classification),
       m.clock != null ? el("span", { class: "muted" }, `⏱ ${formatClock(m.clock)} left`) : null),
-    el("div", { class: "san" }, moveLabel(m)),
-  ];
-  // Two columns side by side, so the panel stays the board's height instead of growing.
-  const nodes = [
-    el("h3", {}, "What the move does"),
+    el("div", { class: "san-row" },
+      el("div", { class: "san" }, moveLabel(m)),
+      hasBetter
+        ? el("button", { onclick: () => setView(state.view === "better" ? "played" : "better") },
+            state.view === "better" ? "Show move played" : "Show best move")
+        : null),
     el("p", {}, m.description),
-
-    el("h3", {}, "Verdict"),
     el("p", {}, verdict(m)),
-    el("div", { class: "move-accuracy" },
+    el("div", { class: "move-accuracy", title: "Evaluation: plus is good for White, minus for Black" },
       el("div", { class: "meter" }, el("div", { class: `fill c-${m.classification}`, style: `width: ${m.accuracy}%` })),
-      el("span", {}, el("strong", {}, `${Math.round(m.accuracy)}%`), " move accuracy"),
-      el("span", { class: "muted" }, m.win_drop > 0 ? `· lost ${m.win_drop}% winning chances` : "· no winning chances lost")),
-    el("p", { class: "muted" }, `Evaluation: ${m.eval_before.text} → ${m.eval_after.text} (plus is good for White, minus for Black)`),
+      el("span", {}, el("strong", {}, `${Math.round(m.accuracy)}%`), " accuracy"),
+      el("span", { class: "muted" }, m.win_drop > 0 ? `· lost ${m.win_drop}% winning chances` : "· nothing lost"),
+      el("span", { class: "muted" }, `· eval ${m.eval_before.text} → ${m.eval_after.text}`)),
   ];
 
-  const right = [];
-  if (bad && m.explanation) {
-    right.push(
+  if (bad && (m.problem || m.explanation)) {
+    nodes.push(
       el("h3", {}, "Why it's a problem"),
-      el("p", { class: "callout c-warn" }, m.explanation),
+      el("p", { class: "callout c-warn" }, m.problem || m.explanation),
       ideaSection(m, yours, "punish")
     );
   }
 
-  if (m.best_uci !== m.uci) {
-    right.push(
+  if (hasBetter) {
+    nodes.push(
       el("h3", {}, yours ? "What you could have played" : "What they should have played"),
       el("p", {}, el("strong", {}, m.best_san), m.best_description ? ` — ${lowerFirst(m.best_description)}` : ""),
       m.best_line ? el("p", { class: "line" }, `Engine line: ${m.best_line}`) : null,
@@ -413,13 +405,9 @@ function moveCard(m) {
       nodes.push(el("h3", {}, "Your turn"));
       if (bad) nodes.push(el("p", { class: "callout" }, `Your opponent slipped here. The best way to punish it: ${m.reply_san}${note}.`));
       else nodes.push(el("p", {}, `The best reply here is ${m.reply_san}${note}.`));
-      if (m.reply_line) nodes.push(el("p", { class: "line" }, `Engine line: ${m.reply_line}`));
     }
   }
-  return [
-    ...header,
-    el("div", { class: "step-cols" }, el("div", { class: "step-col" }, ...nodes), el("div", { class: "step-col" }, ...right)),
-  ];
+  return nodes;
 }
 
 function summaryCard() {
@@ -502,10 +490,6 @@ function ideaSection(m, yours, kind) {
     buttons.append(active
       ? el("button", { onclick: closeIdea }, "✕ Close")
       : el("button", { class: kind === "punish" ? "warn" : "primary", onclick: () => startIdea(kind) }, spec.button(m)));
-  }
-  if (kind === "better" && idea.index === null) {
-    buttons.append(el("button", { onclick: () => setView(state.view === "better" ? "played" : "better") },
-      state.view === "better" ? "Show the move played" : "Show the better move on the board"));
   }
   box.append(buttons);
 
@@ -656,3 +640,12 @@ document.addEventListener("keydown", (e) => {
     actions[e.key]();
   }
 });
+
+// The move panel is exactly as tall as the board column, whatever the move says.
+function syncPanelHeight() {
+  const step = $("#step");
+  const narrow = window.matchMedia("(max-width: 860px)").matches;
+  step.style.height = narrow ? "" : `${$(".board-col").offsetHeight}px`;
+}
+if (window.ResizeObserver) new ResizeObserver(syncPanelHeight).observe($(".board-col"));
+window.addEventListener("resize", syncPanelHeight);

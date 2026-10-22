@@ -36,8 +36,9 @@ class MoveContext:
 
 @dataclass
 class Explanation:
-    text: str
+    text: str  # the full explanation
     themes: List[str] = field(default_factory=list)
+    summary: str = ""  # just what went wrong, without the better move or evaluation
 
 
 class Explainer:

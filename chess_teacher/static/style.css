@@ -126,24 +126,6 @@ button:disabled { opacity: 0.5; cursor: default; }
   .walk { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* The move panel keeps one size: as tall as the board column. Its content is split into
-   two columns to fit, using the page's full width; contain: size stops the content from
-   growing the row (it only scrolls as a last resort on narrow windows). */
-#screen-walk.screen { max-width: 1640px; }
-#screen-walk .walk { grid-template-columns: minmax(0, 540px) minmax(0, 1fr); }
-.walk > .step { align-self: stretch; contain: size; overflow-y: auto; }
-.step-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 32px; }
-.step-col > h3:first-child { margin-top: 12px; }
-.step .idea-list { display: flex; flex-wrap: wrap; gap: 4px; }
-.step .idea-move { width: auto; padding: 3px 8px; font-size: 13px; }
-@media (max-width: 1150px) {
-  .step-cols { grid-template-columns: minmax(0, 1fr); }
-}
-@media (max-width: 860px) {
-  #screen-walk .walk { grid-template-columns: minmax(0, 1fr); }
-  .walk > .step { contain: none; }
-}
-
 .player { font-weight: 600; padding: 6px 0; }
 .board-wrap { display: flex; gap: 8px; }
 
@@ -315,5 +297,20 @@ button:disabled { opacity: 0.5; cursor: default; }
 #moves { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .move-item { display: inline-flex; align-items: center; gap: 3px; }
 .move-item .mv-icon { width: 15px; height: 15px; }
+
+/* Analysis move panel: fixed to the board column's height (set in analysis.js). */
+.walk > .step { overflow-y: auto; }
+.walk .board-col .caption {
+  height: 2.9em; margin-bottom: 0; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.san-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 2px 0 6px; }
+.san-row .san { margin: 0; }
+.step h3 { margin: 12px 0 4px; }
+.step p { margin: 0 0 6px; }
+.step .callout { margin-top: 4px; }
+.step .idea .row { margin-top: 6px; }
+.step .idea-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.step .idea-move { width: auto; padding: 3px 8px; font-size: 13px; }
 .step .list-item { display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 6px 6px 0 0; }
 .step .list-item .sub { display: inline; margin-left: 4px; }
