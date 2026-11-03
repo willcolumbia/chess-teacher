@@ -94,10 +94,15 @@ const ChessBoard = (() => {
     return svg;
   }
 
+  // Squares whose piece is still gliding in, per board; render() keeps those pieces hidden.
+  const gliding = new WeakMap();
+
   // Options: flipped, highlight (squares tinted yellow), selected (square),
-  // targets (squares to mark as legal destinations), icon ({ square, classification }).
-  function render(boardEl, fen, { flipped = false, highlight = [], selected = null, targets = [], icon: mark = null } = {}) {
+  // targets (squares to mark as legal destinations), icon ({ square, classification }),
+  // premove (squares tinted red for a queued premove), marked (squares you tinted red with a right-click).
+  function render(boardEl, fen, { flipped = false, highlight = [], selected = null, targets = [], icon: mark = null, premove = [], marked = [] } = {}) {
     const grid = parseFen(fen);
+    const busy = gliding.get(boardEl);
     boardEl.replaceChildren();
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
@@ -107,11 +112,17 @@ const ChessBoard = (() => {
         const piece = grid[7 - rank][file];
         const classes = ["sq", (rank + file) % 2 ? "light" : "dark"];
         if (highlight.includes(name)) classes.push("hl");
+        if (premove.includes(name)) classes.push("premove");
+        if (marked.includes(name)) classes.push("marked");
         if (name === selected) classes.push("selected");
         if (targets.includes(name)) classes.push(piece ? "target capture" : "target");
         const sq = make("div", classes.join(" "));
         sq.dataset.square = name;
-        if (piece) sq.append(pieceImage(piece));
+        if (piece) {
+          const img = pieceImage(piece);
+          if (busy && busy.has(name)) img.style.visibility = "hidden";
+          sq.append(img);
+        }
         if (mark && mark.square === name) {
           const badge = icon(mark.classification);
           if (badge) {
@@ -126,6 +137,50 @@ const ChessBoard = (() => {
     }
   }
 
+  // Slide the piece that just landed on `uci`'s target square in from where it started
+  // (and the rook as well, when castling). Call it right after render(). Resolves once landed.
+  function glide(boardEl, uci, ms) {
+    const from = uci.slice(0, 2);
+    const to = uci.slice(2, 4);
+    const paths = [[from, to]];
+    const mover = boardEl.querySelector(`[data-square="${to}"] .piece`);
+    if (mover && mover.alt.toLowerCase() === "k" && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) {
+      paths.push(to[0] === "g" ? ["h" + to[1], "f" + to[1]] : ["a" + to[1], "d" + to[1]]);
+    }
+    if (!ms || matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
+    if (!gliding.has(boardEl)) gliding.set(boardEl, new Set());
+    const busy = gliding.get(boardEl);
+
+    return Promise.all(
+      paths.map(([a, b]) => {
+        const start = boardEl.querySelector(`[data-square="${a}"]`);
+        const img = boardEl.querySelector(`[data-square="${b}"] .piece`);
+        if (!start || !img) return null;
+        const s = start.getBoundingClientRect();
+        const e = img.getBoundingClientRect();
+        const clone = pieceImage(img.alt);
+        clone.classList.add("glide");
+        Object.assign(clone.style, { left: `${e.left}px`, top: `${e.top}px`, width: `${e.width}px`, height: `${e.height}px` });
+        document.body.append(clone);
+        busy.add(b);
+        img.style.visibility = "hidden";
+        const anim = clone.animate(
+          [{ transform: `translate(${s.left - e.left}px, ${s.top - e.top}px)` }, { transform: "none" }],
+          { duration: ms, easing: "ease-in-out" }
+        );
+        // The timer lands the piece even if the animation stalls (e.g. in a background tab).
+        const timer = new Promise((r) => setTimeout(r, ms + 100));
+        return Promise.race([anim.finished.catch(() => {}), timer]).then(() => {
+          anim.cancel();
+          clone.remove();
+          busy.delete(b);
+          const landed = boardEl.querySelector(`[data-square="${b}"] .piece`);
+          if (landed) landed.style.visibility = "";
+        });
+      })
+    );
+  }
+
   // Centre of a square in the 8x8 SVG overlay's coordinates.
   function squareXY(name, flipped) {
     const file = name.charCodeAt(0) - 97;
@@ -133,27 +188,34 @@ const ChessBoard = (() => {
     return flipped ? [7 - file + 0.5, rank + 0.5] : [file + 0.5, 7 - rank + 0.5];
   }
 
-  // arrows: [[uci, kind], ...]; kind picks the CSS class arrow-<kind> and marker #head-<kind>.
+  // The polyline points for an arrow along `uci`, in the SVG overlay's coordinates.
+  function arrowPoints(uci, flipped) {
+    const [x1, y1] = squareXY(uci.slice(0, 2), flipped);
+    const [x2, y2] = squareXY(uci.slice(2, 4), flipped);
+    const dx = Math.abs(x2 - x1);
+    const dy = Math.abs(y2 - y1);
+    // Only knight moves are 1x2 or 2x1; draw those as an L, long leg first.
+    const points = [[x1, y1]];
+    if ((dx === 1 && dy === 2) || (dx === 2 && dy === 1)) points.push(dx === 2 ? [x2, y1] : [x1, y2]);
+    const [px, py] = points[points.length - 1];
+    const len = Math.hypot(x2 - px, y2 - py);
+    const k = (len - 0.3) / len; // stop short so the arrowhead sits inside the target square
+    points.push([px + (x2 - px) * k, py + (y2 - py) * k]);
+    return points;
+  }
+
+  // An arrow through `points`; kind picks the CSS class arrow-<kind> and marker #head-<kind>.
+  function arrowLine(points, kind) {
+    const line = document.createElementNS(SVG_NS, "polyline");
+    line.setAttribute("points", points.map((p) => p.join(",")).join(" "));
+    line.setAttribute("class", `arrow-${kind}`);
+    line.setAttribute("marker-end", `url(#head-${kind})`);
+    return line;
+  }
+
+  // arrows: [[uci, kind], ...]
   function drawArrows(layerEl, arrows, flipped) {
-    layerEl.replaceChildren();
-    for (const [uci, kind] of arrows) {
-      const [x1, y1] = squareXY(uci.slice(0, 2), flipped);
-      const [x2, y2] = squareXY(uci.slice(2, 4), flipped);
-      const dx = Math.abs(x2 - x1);
-      const dy = Math.abs(y2 - y1);
-      // Only knight moves are 1x2 or 2x1; draw those as an L, long leg first.
-      const points = [[x1, y1]];
-      if ((dx === 1 && dy === 2) || (dx === 2 && dy === 1)) points.push(dx === 2 ? [x2, y1] : [x1, y2]);
-      const [px, py] = points[points.length - 1];
-      const len = Math.hypot(x2 - px, y2 - py);
-      const k = (len - 0.3) / len; // stop short so the arrowhead sits inside the target square
-      points.push([px + (x2 - px) * k, py + (y2 - py) * k]);
-      const line = document.createElementNS(SVG_NS, "polyline");
-      line.setAttribute("points", points.map((p) => p.join(",")).join(" "));
-      line.setAttribute("class", `arrow-${kind}`);
-      line.setAttribute("marker-end", `url(#head-${kind})`);
-      layerEl.append(line);
-    }
+    layerEl.replaceChildren(...arrows.map(([uci, kind]) => arrowLine(arrowPoints(uci, flipped), kind)));
   }
 
   // Click-to-move and drag-and-drop. The page owns the state; hooks:
@@ -162,7 +224,7 @@ const ChessBoard = (() => {
   //   fen()                current position
   //   selected()           currently selected square (or null)
   //   select(square)       set the selection (null clears it) and re-render
-  //   move(from, to)       the user made a move
+  //   move(from, to, how)  the user made a move; how.dragged is true for drag-and-drop
   //   touched()            optional: called whenever the user presses on the board
   function attachInput(boardEl, hooks) {
     let drag = null; // { from, ghost, size, moved, wasSelected }
@@ -179,6 +241,7 @@ const ChessBoard = (() => {
     }
 
     boardEl.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return; // only the main button moves pieces; pages may use right-click
       const sq = e.target.closest(".sq");
       if (!sq || !hooks.canMove()) return;
       const square = sq.dataset.square;
@@ -186,7 +249,7 @@ const ChessBoard = (() => {
 
       const selected = hooks.selected();
       if (selected && hooks.targetsFrom(selected).includes(square)) {
-        hooks.move(selected, square);
+        hooks.move(selected, square, { dragged: false });
         return;
       }
       if (!hooks.targetsFrom(square).length) {
@@ -223,7 +286,7 @@ const ChessBoard = (() => {
       ghost.remove();
       const to = cancelled ? null : squareAt(e.clientX, e.clientY);
       if (to && to !== from && hooks.targetsFrom(from).includes(to)) {
-        hooks.move(from, to);
+        hooks.move(from, to, { dragged: true });
       } else {
         // A second click on a piece puts it down; otherwise it stays selected
         // so a click on a target square finishes the move.
@@ -274,5 +337,5 @@ const ChessBoard = (() => {
     return box;
   }
 
-  return { render, drawArrows, pieceAt, pieceImage, attachInput, icon, LABELS, captured, capturedRow };
+  return { render, glide, drawArrows, pieceAt, pieceImage, attachInput, icon, LABELS, captured, capturedRow };
 })();

@@ -24,11 +24,16 @@ const state = {
   colorChoice: "white", // "white", "black" or "random"
   myColor: "white", // the side you actually play this game
   thinking: false,
+  premove: null, // { from, to }: one move queued while Stockfish is thinking
+  arrows: [], // arrows you drew with the right mouse button, as "e2e4"-style square pairs
+  marks: [], // squares you tinted red with a right-click
   ratings: [], // classification of each move ("best", "mistake", ...), filled in as Stockfish rates them
 };
 let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
 
 const STOCKFISH_MIN_ELO = 1320; // below this the engine's strength is our approximation
+const ENGINE_THINK_MS = [900, 1600]; // Stockfish waits a random time in this range before moving
+const GLIDE_MS = { engine: 330, click: 200, premove: 160 }; // how long a piece takes to slide over
 
 function saveSettings() {
   try {
@@ -49,7 +54,6 @@ function loadSettings() {
   } catch (e) {
     // use the defaults
   }
-  state.flipped = state.mode === "engine" && state.myColor === "black";
 }
 
 const vsEngine = () => state.mode === "engine";
@@ -60,24 +64,6 @@ function players() {
   if (!vsEngine()) return {};
   const engine = `Stockfish (${state.elo})`;
   return state.myColor === "white" ? { white: "You", black: engine } : { white: engine, black: "You" };
-}
-
-function saveMoves() {
-  try {
-    localStorage.setItem("homeMoves", JSON.stringify(state.moves));
-    localStorage.setItem("homeRatings", JSON.stringify(state.ratings));
-  } catch (e) {
-    // fine: the game just won't survive a reload
-  }
-}
-
-function savedRatings() {
-  try {
-    const ratings = JSON.parse(localStorage.getItem("homeRatings") || "[]");
-    return Array.isArray(ratings) ? ratings : [];
-  } catch (e) {
-    return [];
-  }
 }
 
 // Ask Stockfish how good the last move was; show its icon when the answer arrives.
@@ -96,7 +82,6 @@ async function rateLastMove() {
     // Still the same game (no undo / new game since)?
     if (state.moves.length > index && state.moves[index] === moves[index] && state.moves.slice(0, index).join() === moves.slice(0, index).join()) {
       state.ratings[index] = data.classification;
-      saveMoves();
       render();
     }
   } catch (e) {
@@ -104,16 +89,8 @@ async function rateLastMove() {
   }
 }
 
-function savedMoves() {
-  try {
-    const moves = JSON.parse(localStorage.getItem("homeMoves") || "[]");
-    return Array.isArray(moves) ? moves : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-async function load(moves) {
+// glide: milliseconds to slide the new move's piece over (0 = jump straight there).
+async function load(moves, { glide = 0 } = {}) {
   const res = await fetch("/api/play", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -121,6 +98,7 @@ async function load(moves) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Could not play that move.");
+  const added = moves.length === state.moves.length + 1 && moves.slice(0, -1).join() === state.moves.join();
   Object.assign(state, {
     moves,
     fen: data.fen,
@@ -132,11 +110,17 @@ async function load(moves) {
     gameOver: data.game_over,
   });
   state.selected = null;
+  state.arrows = []; // drawn arrows and marks go away once a move is played
+  state.marks = [];
   state.ratings = state.ratings.slice(0, moves.length);
-  saveMoves();
   render();
+  const landed = added && glide ? ChessBoard.glide(boardEl, moves[moves.length - 1], glide) : Promise.resolve();
   rateLastMove();
   if (enginesTurn()) engineMove();
+  else if (state.premove) {
+    const premove = state.premove;
+    landed.then(() => playPremove(premove));
+  }
 }
 
 async function engineMove() {
@@ -152,10 +136,12 @@ async function engineMove() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Stockfish couldn't move.");
-    await new Promise((r) => setTimeout(r, Math.max(0, 350 - (Date.now() - started)))); // don't reply instantly
+    const [min, max] = ENGINE_THINK_MS;
+    const think = min + Math.random() * (max - min);
+    await new Promise((r) => setTimeout(r, Math.max(0, think - (Date.now() - started)))); // don't reply instantly
     if (request !== engineRequest) return; // undo or new game happened meanwhile
     state.thinking = false;
-    await load([...state.moves, data.uci]);
+    await load([...state.moves, data.uci], { glide: GLIDE_MS.engine });
   } catch (err) {
     if (request !== engineRequest) return;
     state.thinking = false;
@@ -166,7 +152,7 @@ async function engineMove() {
 
 function statusText() {
   if (!vsEngine() || state.gameOver) return state.status;
-  if (state.thinking || enginesTurn()) return "Stockfish is thinking…";
+  if (state.thinking || enginesTurn()) return state.premove ? "Stockfish is thinking… (premove set)" : "Stockfish is thinking…";
   return state.status.includes("in check") ? "Your move — you're in check" : "Your move";
 }
 
@@ -174,27 +160,104 @@ function targetsFrom(square) {
   return [...new Set(state.legal.filter((u) => u.startsWith(square)).map((u) => u.slice(2, 4)))];
 }
 
+// ---------- Premove ----------
+
+// Squares the piece on `square` could reach on an empty board (plus castling), if it's yours.
+// Whether the premove is really legal is only known once Stockfish has replied.
+function premoveTargets(square) {
+  const piece = ChessBoard.pieceAt(state.fen, square);
+  if (!piece || (piece === piece.toUpperCase()) !== (state.myColor === "white")) return [];
+  return reach(square, piece);
+}
+
+// Squares `piece` standing on `square` could move to on an empty board (plus castling).
+function reach(square, piece) {
+  const file = square.charCodeAt(0) - 97;
+  const rank = Number(square[1]) - 1;
+  const out = [];
+  const add = (df, dr) => {
+    const f = file + df;
+    const r = rank + dr;
+    if (f >= 0 && f < 8 && r >= 0 && r < 8) out.push(String.fromCharCode(97 + f) + (r + 1));
+  };
+  const ray = (df, dr) => {
+    for (let k = 1; k < 8; k++) add(df * k, dr * k);
+  };
+  const type = piece.toLowerCase();
+  if (type === "p") {
+    const ahead = piece === "P" ? 1 : -1;
+    add(0, ahead);
+    if (rank === (ahead === 1 ? 1 : 6)) add(0, 2 * ahead);
+    add(-1, ahead);
+    add(1, ahead);
+  }
+  if (type === "n") for (const [df, dr] of [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]]) add(df, dr);
+  if (type === "b" || type === "q") for (const [df, dr] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) ray(df, dr);
+  if (type === "r" || type === "q") for (const [df, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ray(df, dr);
+  if (type === "k") {
+    for (const df of [-1, 0, 1]) for (const dr of [-1, 0, 1]) if (df || dr) add(df, dr);
+    if (file === 4 && rank === (piece === "K" ? 0 : 7)) {
+      add(2, 0);
+      add(-2, 0);
+    }
+  }
+  return out;
+}
+
+function setPremove(from, to) {
+  state.premove = { from, to }; // replaces any earlier one: only one premove at a time
+  state.selected = null;
+  render();
+}
+
+function clearPremove() {
+  state.premove = null;
+  state.selected = null;
+  render();
+}
+
+// Your turn again: play the queued premove if it's legal now (a promotion becomes a queen).
+function playPremove(premove) {
+  if (state.premove !== premove || !canMove()) return;
+  state.premove = null;
+  const prefix = premove.from + premove.to;
+  const uci = state.legal.find((u) => u.startsWith(prefix) && (u.length === 4 || u.endsWith("q")));
+  if (!uci) return render();
+  load([...state.moves, uci], { glide: GLIDE_MS.premove }).catch((err) => showError(err.message));
+}
+
+// ---------- Drawing ----------
+
+function renderElo() {
+  const approximate = state.elo < STOCKFISH_MIN_ELO;
+  $("#elo").value = state.elo;
+  $("#elo-value").textContent = approximate ? `≈${state.elo}` : String(state.elo);
+  $("#elo-note").classList.toggle("off", !approximate);
+  $("#opponent").textContent = vsEngine()
+    ? `You (${state.myColor}) vs Stockfish ${state.elo}`
+    : "Two players — move both sides";
+}
+
 function render() {
   const last = state.moves[state.moves.length - 1];
   const rating = state.ratings[state.moves.length - 1];
+  const targets = enginesTurn() ? premoveTargets : targetsFrom;
   ChessBoard.render(boardEl, state.fen, {
     flipped: state.flipped,
     highlight: last ? [last.slice(0, 2), last.slice(2, 4)] : [],
     selected: state.selected,
-    targets: state.selected ? targetsFrom(state.selected) : [],
+    targets: state.selected ? targets(state.selected) : [],
     icon: last && rating ? { square: last.slice(2, 4), classification: rating } : null,
+    premove: state.premove ? [state.premove.from, state.premove.to] : [],
+    marked: state.marks,
   });
-  ChessBoard.drawArrows($("#arrow-layer"), last ? [[last, "last"]] : [], state.flipped);
+  drawUserArrows();
   $("#status").textContent = statusText();
   $("#undo").disabled = state.moves.length === 0;
   for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);
   $("#engine-settings").hidden = !vsEngine();
-  $("#elo").value = state.elo;
-  $("#elo-value").textContent = state.elo < STOCKFISH_MIN_ELO ? `≈${state.elo} (approximate)` : String(state.elo);
+  renderElo();
   $("#color").value = state.colorChoice;
-  $("#opponent").textContent = vsEngine()
-    ? `You (${state.myColor}) vs Stockfish ${state.elo}`
-    : "Two players — move both sides";
   $("#to-analysis").disabled = state.moves.length === 0;
   $("#moves").replaceChildren(
     ...state.sans.map((san, i) => {
@@ -208,17 +271,18 @@ function render() {
   );
 }
 
-async function tryMove(from, to) {
+async function tryMove(from, to, { dragged = false } = {}) {
   const candidates = state.legal.filter((u) => u.startsWith(from + to));
   if (!candidates.length) {
     state.selected = null;
     render();
     return;
   }
+  state.premove = null;
   const uci = candidates.length > 1 ? await choosePromotion(to, candidates) : candidates[0];
   if (!uci) return render();
   try {
-    await load([...state.moves, uci]);
+    await load([...state.moves, uci], { glide: dragged ? 0 : GLIDE_MS.click }); // a dragged piece is already there
   } catch (err) {
     showError(err.message);
   }
@@ -261,23 +325,85 @@ function showError(msg) {
 
 // ---------- Click and drag ----------
 
+// While Stockfish is thinking, the same clicks and drags queue a premove instead.
 ChessBoard.attachInput(boardEl, {
-  canMove: () => $("#promotion").hidden && canMove(),
-  targetsFrom,
+  canMove: () => $("#promotion").hidden && (canMove() || enginesTurn()),
+  targetsFrom: (square) => (enginesTurn() ? premoveTargets(square) : targetsFrom(square)),
   fen: () => state.fen,
   selected: () => state.selected,
   select: (square) => {
+    if (square === null && enginesTurn()) state.premove = null; // clicking elsewhere cancels the premove
     state.selected = square;
     render();
   },
-  move: tryMove,
+  move: (from, to, how) => (enginesTurn() ? setPremove(from, to) : tryMove(from, to, how)),
   touched: () => showError(""),
 });
+
+// ---------- Your own arrows: right-click and drag ----------
+
+let arrowFrom = null; // square the right-button drag started on
+
+function squareUnder(e) {
+  const hit = document.elementFromPoint(e.clientX, e.clientY);
+  const sq = hit && hit.closest(".sq");
+  return sq && boardEl.contains(sq) ? sq.dataset.square : null;
+}
+
+// An arrow from `from` to `to` ("e2e4"), if the piece on `from` could make that move.
+// From an empty square, arrows follow queen and knight lines.
+function arrowBetween(from, to) {
+  if (!from || !to || from === to) return null;
+  const piece = ChessBoard.pieceAt(state.fen, from);
+  const squares = piece ? reach(from, piece) : [...reach(from, "Q"), ...reach(from, "N")];
+  return squares.includes(to) ? from + to : null;
+}
+
+function drawUserArrows() {
+  ChessBoard.drawArrows($("#arrow-layer"), state.arrows.map((a) => [a, "user"]), state.flipped);
+}
+
+boardEl.addEventListener("pointerdown", (e) => {
+  if (e.button === 0) {
+    if (state.arrows.length || state.marks.length) {
+      state.arrows = []; // a left click clears your arrows and marks
+      state.marks = [];
+      boardEl.querySelectorAll(".sq.marked").forEach((sq) => sq.classList.remove("marked")); // no redraw: a piece may be mid-drag
+      drawUserArrows();
+    }
+    return;
+  }
+  if (e.button !== 2) return;
+  arrowFrom = squareUnder(e);
+});
+
+// Nothing is drawn while you drag: the arrow appears when you let go.
+window.addEventListener("pointerup", (e) => {
+  if (!arrowFrom || e.button !== 2) return;
+  const from = arrowFrom;
+  const to = squareUnder(e);
+  const arrow = arrowBetween(from, to);
+  arrowFrom = null;
+  if (arrow) {
+    // Drawing the same arrow again removes it.
+    state.arrows = state.arrows.includes(arrow) ? state.arrows.filter((a) => a !== arrow) : [...state.arrows, arrow];
+  } else if (to === from && state.premove) {
+    clearPremove(); // a plain right-click cancels the premove first
+  } else if (to === from) {
+    // A plain right-click marks the square, or unmarks it.
+    state.marks = state.marks.includes(from) ? state.marks.filter((s) => s !== from) : [...state.marks, from];
+    render();
+  }
+  drawUserArrows();
+});
+
+boardEl.addEventListener("contextmenu", (e) => e.preventDefault()); // right-click is for arrows, not the browser menu
 
 // ---------- Buttons ----------
 
 function undo() {
   let back = 1;
+  state.premove = null;
   if (vsEngine()) {
     if (state.thinking) {
       engineRequest++; // drop the pending reply
@@ -292,9 +418,13 @@ function undo() {
 function newGame() {
   engineRequest++;
   state.thinking = false;
+  state.premove = null;
+  state.ratings = [];
   if (vsEngine()) {
     state.myColor = state.colorChoice === "random" ? (Math.random() < 0.5 ? "white" : "black") : state.colorChoice;
     state.flipped = state.myColor === "black";
+  } else {
+    state.flipped = false;
   }
   saveSettings();
   showError("");
@@ -323,7 +453,7 @@ $("#color").addEventListener("change", (e) => {
 $("#elo").addEventListener("input", (e) => {
   state.elo = Number(e.target.value);
   saveSettings();
-  render();
+  renderElo(); // only the labels change: no need to redraw the board while sliding
 });
 $("#flip").addEventListener("click", () => {
   state.flipped = !state.flipped;
@@ -338,6 +468,6 @@ $("#to-analysis").addEventListener("click", () => {
   location.href = "/analysis";
 });
 
+// Every visit starts a fresh game (your opponent settings are remembered).
 loadSettings();
-state.ratings = savedRatings();
-load(savedMoves()).catch(() => load([]).catch((err) => showError(err.message)));
+newGame();
