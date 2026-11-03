@@ -7,15 +7,19 @@
 """
 from __future__ import annotations
 
+import os
 import threading
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import date
 from pathlib import Path
-from typing import Dict
+from typing import Deque, Dict
 
 import chess
 import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import openings, opponent
 from .positions import game_status, replay, sans_of
@@ -23,10 +27,43 @@ from .analysis import DEFAULT_DEPTH, analyze_pgn, rate_last_move, read_game
 
 STATIC = Path(__file__).parent / "static"
 MAX_JOBS = 50
+# Analyses running at once; each one keeps a Stockfish process busy.
+MAX_RUNNING = int(os.environ.get("CHESS_TEACHER_MAX_RUNNING", "2"))
+# (requests, seconds) per client IP. /api/jobs is left out: the Analysis page polls it.
+RATE_LIMITS = {
+    "/api/analyze": (5, 600),
+    "/api/": (120, 60),
+}
 
 app = Flask(__name__, static_folder=None)
+if os.environ.get("CHESS_TEACHER_BEHIND_PROXY"):
+    # Take the client IP from X-Forwarded-For (set by Tailscale Funnel).
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 jobs: Dict[str, Dict] = {}
 jobs_lock = threading.Lock()
+hits: Dict[tuple, Deque[float]] = defaultdict(deque)
+hits_lock = threading.Lock()
+
+
+@app.before_request
+def rate_limit():
+    path = request.path
+    if request.method != "POST" or path.startswith("/api/jobs/"):
+        return None
+    prefix = next((p for p in RATE_LIMITS if path.startswith(p)), None)
+    if prefix is None:
+        return None
+    limit, window = RATE_LIMITS[prefix]
+    now = time.monotonic()
+    with hits_lock:
+        recent = hits[(prefix, request.remote_addr)]
+        while recent and recent[0] <= now - window:
+            recent.popleft()
+        if len(recent) >= limit:
+            wait = int(recent[0] + window - now) + 1
+            return jsonify({"error": f"Too many requests. Try again in {wait}s."}), 429
+        recent.append(now)
+    return None
 
 
 def run_job(job_id: str, pgn: str, depth: int) -> None:
@@ -75,6 +112,8 @@ def analyze():
 
     job_id = uuid.uuid4().hex
     with jobs_lock:
+        if sum(j["status"] == "running" for j in jobs.values()) >= MAX_RUNNING:
+            return jsonify({"error": "The server is busy with other analyses. Try again in a minute."}), 503
         if len(jobs) >= MAX_JOBS:
             jobs.pop(next(iter(jobs)))
         jobs[job_id] = {"status": "running", "progress": {"done": 0, "total": 0}}
