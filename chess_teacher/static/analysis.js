@@ -1,6 +1,7 @@
 "use strict";
 
 const BAD = ["inaccuracy", "mistake", "miss", "blunder"];
+const NOTABLE = ["brilliant", "great", ...BAD]; // marked in the timeline and move list
 const TABLE_CLASSES = ["book", "brilliant", "great", "best", "good", "inaccuracy", "mistake", "miss", "blunder"];
 const PLURALS = { inaccuracy: "inaccuracies", mistake: "mistakes", miss: "misses", blunder: "blunders" };
 const PATTERNS = {
@@ -29,6 +30,7 @@ const BEST_MOVE_DELAY_MS = 900;
 // "Show why" playback: idea.index = null (off) or 0..line length; 0 is the starting position.
 const idea = { index: null, timer: null, kind: null };
 const IDEA_DELAY_MS = 1600;
+const GLIDE_MS = 300; // how long a piece takes to slide to its square when stepping forward
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -61,20 +63,56 @@ function show(screen) {
 
 $("#username").value = store("username") || "";
 
+// Two tabs: your Chess.com games, or a PGN pasted / uploaded. The last one used is remembered.
+function selectTab(tab) {
+  for (const b of document.querySelectorAll("[data-tab]")) {
+    const on = b.dataset.tab === tab;
+    b.setAttribute("aria-selected", String(on));
+    b.tabIndex = on ? 0 : -1;
+    $(`#panel-${b.dataset.tab}`).hidden = !on;
+  }
+  store("analysisTab", tab);
+}
+document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
+selectTab(store("analysisTab") === "pgn" ? "pgn" : "chesscom");
+
+// Analysis depth (Stockfish's search depth per move), remembered too.
+const depthChoice = () => Number((document.querySelector('input[name="depth"]:checked') || {}).value || 16);
+{
+  const saved = document.querySelector(`input[name="depth"][value="${store("depth")}"]`);
+  if (saved) saved.checked = true;
+  document.querySelectorAll('input[name="depth"]').forEach((r) => r.addEventListener("change", () => store("depth", r.value)));
+}
+
 // A game handed over from the home page ("Analyze this game").
 try {
   const handed = sessionStorage.getItem("pendingPgn");
   if (handed) {
     $("#pgn").value = handed;
     sessionStorage.removeItem("pendingPgn");
+    selectTab("pgn");
   }
 } catch (e) {
   // storage unavailable; the user can paste the PGN instead
 }
 
-$("#file").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
+async function loadFile(file) {
   if (file) $("#pgn").value = await file.text();
+}
+$("#file").addEventListener("change", (e) => loadFile(e.target.files[0]));
+
+// Drag a .pgn file onto the drop area.
+const dropzone = $("#dropzone");
+for (const type of ["dragenter", "dragover"]) {
+  dropzone.addEventListener(type, (e) => {
+    e.preventDefault();
+    dropzone.classList.add("over");
+  });
+}
+for (const type of ["dragleave", "drop"]) dropzone.addEventListener(type, () => dropzone.classList.remove("over"));
+dropzone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  loadFile(e.dataTransfer && e.dataTransfer.files[0]);
 });
 
 $("#clear-pgn").addEventListener("click", () => {
@@ -101,6 +139,9 @@ function ago(seconds) {
 
 function gameRow(game, lastSeen) {
   const mark = { win: "W", loss: "L", draw: "D" }[game.outcome];
+  const side = game.color === "white" ? "White" : "Black";
+  const timeClass = game.time_class ? game.time_class[0].toUpperCase() + game.time_class.slice(1) : "";
+  const king = el("img", { src: `/static/pieces/${game.color === "white" ? "w" : "b"}K.svg`, alt: "" });
   return el("button", {
     class: "recent-game",
     title: "Analyze this game",
@@ -110,10 +151,12 @@ function gameRow(game, lastSeen) {
       analyze();
     },
   },
-    el("span", { class: `outcome o-${game.outcome}` }, mark),
-    el("span", { class: "who" }, `vs ${game.opponent}`, game.opponent_rating ? el("span", { class: "muted" }, ` (${game.opponent_rating})`) : null),
-    el("span", { class: "muted small" }, `${game.color === "white" ? "♔" : "♚"} ${game.time_class} · ${ago(game.end_time)}`),
-    game.end_time > lastSeen ? el("span", { class: "chip you" }, "New") : null);
+    el("span", { class: `outcome o-${game.outcome}`, "aria-label": game.outcome }, mark),
+    el("span", { class: "game-info" },
+      el("span", { class: "who" }, `vs ${game.opponent}`, game.opponent_rating ? el("span", { class: "muted" }, ` (${game.opponent_rating})`) : null),
+      el("span", { class: "meta" }, king, [side, timeClass, ago(game.end_time)].filter(Boolean).join(" · "))),
+    game.end_time > lastSeen ? el("span", { class: "chip you" }, "New") : el("span"),
+    el("span", { class: "go" }, "Analyze ›"));
 }
 
 async function loadRecent() {
@@ -137,15 +180,19 @@ async function loadRecent() {
   }
 }
 
-$("#username").addEventListener("change", () => {
+function showGames() {
   store("username", $("#username").value.trim());
   loadRecent();
-});
+}
+$("#username").addEventListener("change", showGames);
+$("#username").addEventListener("keydown", (e) => e.key === "Enter" && showGames());
+$("#show-games").addEventListener("click", showGames);
 loadRecent();
 setInterval(() => {
   if (!$("#screen-input").hidden) loadRecent();
 }, RECENT_REFRESH_MS);
 $("#new-game").addEventListener("click", () => show("input"));
+$("#next-mistake").addEventListener("click", () => nextMistake());
 
 function showError(msg) {
   $("#error").textContent = msg;
@@ -173,7 +220,7 @@ async function analyze() {
     const res = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pgn, depth: Number($("#depth").value) }),
+      body: JSON.stringify({ pgn, depth: depthChoice() }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Analysis failed.");
@@ -232,9 +279,14 @@ function start(color) {
   state.view = "played";
   const h = state.result.headers;
   $("#game-title").textContent = `${h.White || "White"} vs ${h.Black || "Black"}`;
-  const opening = state.result.opening ? `${state.result.opening.eco} ${state.result.opening.name}` : null;
-  $("#game-sub").textContent = [opening, h.Result, h.Termination, h.Date].filter((x) => x && x !== "?").join(" · ");
+  const opening = state.result.opening ? `${state.result.opening.eco} · ${state.result.opening.name}` : null;
+  const result = [h.Result, h.Termination].filter((x) => x && x !== "?" && x !== "*").join(" · ");
+  $("#game-sub").replaceChildren(...[timeControl(h.TimeControl), opening, result, h.Date]
+    .filter((x) => x && x !== "?" && !x.startsWith("????"))
+    .map((x) => el("span", { class: "chip" }, x)));
   buildTimeline();
+  buildMoveList();
+  buildReport();
   show("walk");
   render();
 }
@@ -248,36 +300,78 @@ function moveLabel(m) {
   return m.color === "white" ? `${m.move_number}. ${m.san}` : `${m.move_number}... ${m.san}`;
 }
 
-function playerName(color) {
-  const h = state.result.headers;
-  const name = color === "white" ? h.White : h.Black;
-  const elo = color === "white" ? h.WhiteElo : h.BlackElo;
-  const you = color === state.myColor ? " (you)" : "";
-  return `${color === "white" ? "♔" : "♚"} ${name || color}${elo ? ` · ${elo}` : ""}${you}`;
+// "180+2" → "3+2"; "600" → "10 min"
+function timeControl(tc) {
+  const match = /^(\d+)(?:\+(\d+))?$/.exec(tc || "");
+  if (!match) return null;
+  const minutes = Number(match[1]) / 60;
+  const base = Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1);
+  return match[2] != null ? `${base}+${match[2]}` : `${base} min`;
 }
 
 function buildTimeline() {
   const box = $("#timeline");
   box.replaceChildren();
   moves().forEach((m, i) => {
-    const cls = [isMine(m) ? "mine" : "", isMine(m) && BAD.includes(m.classification) ? `t-${m.classification}` : ""];
+    const cls = [isMine(m) ? "mine" : "", isMine(m) && NOTABLE.includes(m.classification) ? `t-${m.classification}` : ""];
     box.append(el("button", { class: cls.join(" "), title: `${moveLabel(m)} · ${m.classification}`, onclick: () => go(i + 1) }));
   });
 }
 
+// Every move in two columns; the ones worth a look carry their icon.
+function buildMoveList() {
+  const box = $("#move-list");
+  box.replaceChildren();
+  moves().forEach((m, i) => {
+    if (m.color === "white" || i === 0) box.append(el("span", { class: "n" }, `${m.move_number}.`));
+    if (i === 0 && m.color === "black") box.append(el("span", {}, "…"));
+    box.append(el("button", { onclick: () => go(i + 1), title: ChessBoard.LABELS[m.classification] || "" },
+      m.san, NOTABLE.includes(m.classification) ? ChessBoard.icon(m.classification) : null));
+  });
+}
+
+// Accuracy and how many moves of each kind, both players side by side.
+function buildReport() {
+  const h = state.result.headers;
+  const sides = state.myColor === "black" ? ["black", "white"] : ["white", "black"];
+  const name = (color) => (color === "white" ? h.White : h.Black) || color;
+  const summary = state.result.summary;
+  $("#report").replaceChildren(
+    el("div", { class: "acc-tiles" }, ...sides.map((color) =>
+      el("div", { class: `acc-tile ${color}` },
+        el("span", {}, `${name(color)}${color === state.myColor ? " (you)" : ""}`),
+        el("strong", {}, summary[color].accuracy == null ? "–" : String(summary[color].accuracy))))),
+    el("table", { class: "counts" },
+      el("thead", {}, el("tr", {}, el("th", {}), el("th", {}), ...sides.map((color) => el("th", { title: name(color) }, color === state.myColor ? "You" : "Them")))),
+      el("tbody", {}, ...TABLE_CLASSES.map((c) => el("tr", {},
+        el("td", {}, ChessBoard.icon(c)),
+        el("td", {}, ChessBoard.LABELS[c]),
+        ...sides.map((color, k) => el("td", { class: k ? "num them" : "num" }, String(summary[color].counts[c] || 0))))))),
+    el("p", { class: "muted small", style: "margin: 10px 0 0" }, comparisonNote()));
+}
+
 function go(step) {
+  const forward = step === state.step + 1;
   stopIdea();
   idea.index = null;
   state.step = Math.max(0, Math.min(lastStep(), step));
   state.view = "played"; // the best move shows only when asked for
   resetBestMove();
   render();
+  const m = moves()[state.step - 1];
+  if (forward && m) glideMove(m.uci); // one move ahead: slide the piece over, like on the Play page
+}
+
+// Slide the piece that just moved along `uci`; call right after render().
+function glideMove(uci) {
+  ChessBoard.glide($("#board"), uci, GLIDE_MS);
 }
 
 function render() {
   const m = moves()[state.step - 1] || null;
 
   [...$("#timeline").children].forEach((b, i) => b.classList.toggle("current", i === state.step - 1));
+  markMoveList();
   $("#counter").textContent =
     state.step === 0 ? "Introduction" : state.step === lastStep() ? "Summary" : `Step ${state.step} of ${moves().length}`;
   $("#prev").disabled = state.step === 0;
@@ -320,6 +414,21 @@ function render() {
       : `Yellow: ${moveLabel(m)} as played — the engine's best move.`;
   }
   renderStep(moveCard(m));
+}
+
+// Highlight the current move in the move list and scroll the list (not the page) to it.
+function markMoveList() {
+  const list = $("#move-list");
+  let current = null;
+  list.querySelectorAll("button").forEach((b, i) => {
+    b.classList.toggle("current", i === state.step - 1);
+    if (i === state.step - 1) current = b;
+  });
+  if (!current) return;
+  const top = current.offsetTop;
+  if (top < list.scrollTop || top + current.offsetHeight > list.scrollTop + list.clientHeight) {
+    list.scrollTop = top - list.clientHeight / 2;
+  }
 }
 
 function renderStep(nodes) {
@@ -438,8 +547,7 @@ function moveCard(m) {
   const nodes = [
     el("div", { class: "who" },
       el("span", { class: "chip" + (yours ? " you" : "") }, yours ? "Your move" : "Opponent's move"),
-      classBadge(m.classification),
-      m.clock != null ? el("span", { class: "muted" }, `⏱ ${formatClock(m.clock)} left`) : null),
+      classBadge(m.classification)),
     el("div", { class: "san-row" },
       el("div", { class: "san" }, moveLabel(m)),
       hasBetter
@@ -450,28 +558,25 @@ function moveCard(m) {
         : null),
     el("p", {}, m.description),
     el("p", {}, verdict(m)),
-    el("div", { class: "move-accuracy", title: "Evaluation: plus is good for White, minus for Black" },
-      el("div", { class: "meter" }, el("div", { class: `fill c-${m.classification}`, style: `width: ${m.accuracy}%` })),
-      el("span", {}, el("strong", {}, `${Math.round(m.accuracy)}%`), " accuracy"),
-      el("span", { class: "muted" }, m.win_drop > 0 ? `· lost ${m.win_drop}% winning chances` : "· nothing lost"),
-      el("span", { class: "muted" }, `· eval ${m.eval_before.text} → ${m.eval_after.text}`)),
+    el("div", { class: "stats" },
+      stat("Move accuracy", `${Math.round(m.accuracy)}%`),
+      stat("Evaluation", `${m.eval_before.text} → ${m.eval_after.text}`, "Plus is good for White, minus for Black"),
+      stat(yours ? "Your win chance" : "Their win chance", `${Math.round(moverWin(m))}% → ${Math.round(moverWinAfter(m))}%`)),
   ];
 
   if (bad && (m.problem || m.explanation)) {
-    nodes.push(
+    nodes.push(el("div", { class: "box wrong" },
       el("h3", {}, "Why it's a problem"),
-      el("p", { class: "callout c-warn" }, m.problem || m.explanation),
-      ideaSection(m, yours, "punish")
-    );
+      el("p", {}, m.problem || m.explanation),
+      ideaSection(m, yours, "punish")));
   }
 
   if (hasBetter) {
-    nodes.push(
-      el("h3", {}, yours ? "What you could have played" : "What they should have played"),
-      el("p", {}, el("strong", {}, m.best_san), m.best_description ? ` — ${lowerFirst(m.best_description)}` : ""),
-      m.best_line ? el("p", { class: "line" }, `Engine line: ${m.best_line}`) : null,
-      ideaSection(m, yours, "better", false)
-    );
+    nodes.push(el("div", { class: "box better" },
+      el("h3", {}, yours ? `What you could have played: ${m.best_san}` : `What they should have played: ${m.best_san}`),
+      m.best_description ? el("p", {}, m.best_description) : null,
+      m.best_line ? el("p", { class: "line" }, m.best_line) : null,
+      ideaSection(m, yours, "better", false)));
   }
 
   if (m.reply_san) {
@@ -508,13 +613,18 @@ function summaryCard() {
   ];
 }
 
-function lowerFirst(text) {
-  return text[0].toLowerCase() + text.slice(1);
-}
-
 // Mover's winning chances before the move, 0-100.
 function moverWin(m) {
   return m.color === "white" ? m.eval_before.white_win : 100 - m.eval_before.white_win;
+}
+
+// ...and after it.
+function moverWinAfter(m) {
+  return m.color === "white" ? m.eval_after.white_win : 100 - m.eval_after.white_win;
+}
+
+function stat(label, value, title) {
+  return el("div", { class: "stat", ...(title ? { title } : {}) }, el("span", {}, label), el("strong", {}, value));
 }
 
 function formatClock(seconds) {
@@ -531,6 +641,8 @@ function setView(view) {
     bestMove.timer = setTimeout(() => {
       bestMove.played = true;
       render();
+      const m = moves()[state.step - 1];
+      if (m) glideMove(m.best_uci);
     }, BEST_MOVE_DELAY_MS);
   }
   render();
@@ -644,8 +756,15 @@ function playIdea() {
     idea.index += 1;
     if (idea.index >= length) stopIdea();
     render();
+    glideIdea(m);
   }, IDEA_DELAY_MS);
   render();
+}
+
+// Slide the playback's latest move in.
+function glideIdea(m) {
+  const ply = ideaLine(m)[idea.index - 1];
+  if (ply) glideMove(ply.uci);
 }
 
 function stopIdea() {
@@ -661,8 +780,10 @@ function pauseIdea() {
 function stepIdea(delta) {
   const m = moves()[state.step - 1];
   stopIdea();
+  const before = idea.index;
   idea.index = Math.max(0, Math.min(ideaLine(m).length, idea.index + delta));
   render();
+  if (idea.index === before + 1) glideIdea(m);
 }
 
 function closeIdea() {
@@ -742,10 +863,31 @@ document.addEventListener("keydown", (e) => {
 function renderPlayers(fen) {
   const top = state.flipped ? "white" : "black";
   const bottom = top === "white" ? "black" : "white";
+  const h = state.result.headers;
   for (const [id, color] of [["#top-player", top], ["#bottom-player", bottom]]) {
-    $(id).replaceChildren(el("span", {}, playerName(color)), ChessBoard.capturedRow(fen, color));
+    const name = (color === "white" ? h.White : h.Black) || (color === "white" ? "White" : "Black");
+    const elo = color === "white" ? h.WhiteElo : h.BlackElo;
+    const extra = [elo && elo !== "?" ? `(${elo})` : null, color === state.myColor ? "you" : null].filter(Boolean).join(" · ");
+    const clock = clockAt(color);
+    $(id).replaceChildren(
+      el("span", { class: `avatar ${color}`, "aria-hidden": "true" }, name[0].toUpperCase()),
+      el("div", { class: "pinfo" },
+        el("span", { class: "pname" }, name, extra ? el("span", { class: "muted" }, ` ${extra}`) : null),
+        ChessBoard.capturedRow(fen, color)),
+      clock != null ? el("span", { class: `clock ${color}`, title: "Time left" }, formatClock(clock)) : null);
   }
   syncPanelHeight();
+}
+
+// `color`'s clock after the moves up to the current step: their last recorded time, else the starting time.
+function clockAt(color) {
+  const played = moves().slice(0, state.step === lastStep() ? moves().length : state.step);
+  for (let i = played.length - 1; i >= 0; i--) {
+    if (played[i].color === color && played[i].clock != null) return played[i].clock;
+  }
+  if (!moves().some((m) => m.clock != null)) return null;
+  const base = /^(\d+)/.exec(state.result.headers.TimeControl || "");
+  return base ? Number(base[1]) : null;
 }
 
 // The move panel lines up with the board itself: same top edge, same height.

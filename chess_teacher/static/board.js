@@ -1,6 +1,6 @@
 "use strict";
 
-// Board drawing shared by the home page and the analysis page.
+// Board drawing shared by every page.
 const ChessBoard = (() => {
   const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -162,6 +162,7 @@ const ChessBoard = (() => {
     if (mover && mover.alt.toLowerCase() === "k" && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) {
       paths.push(to[0] === "g" ? ["h" + to[1], "f" + to[1]] : ["a" + to[1], "d" + to[1]]);
     }
+    if (window.ChessSettings) ms *= ChessSettings.motionScale(); // Settings → Piece animation
     if (!ms || matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
     if (!gliding.has(boardEl)) gliding.set(boardEl, new Set());
     const busy = gliding.get(boardEl);
@@ -353,6 +354,102 @@ const ChessBoard = (() => {
     return { white: taken("b"), black: taken("w"), lead: material("w") - material("b") };
   }
 
+  // Squares `piece` standing on `square` could move to on an empty board (plus castling).
+  function reach(square, piece) {
+    const file = square.charCodeAt(0) - 97;
+    const rank = Number(square[1]) - 1;
+    const out = [];
+    const add = (df, dr) => {
+      const f = file + df;
+      const r = rank + dr;
+      if (f >= 0 && f < 8 && r >= 0 && r < 8) out.push(String.fromCharCode(97 + f) + (r + 1));
+    };
+    const ray = (df, dr) => {
+      for (let k = 1; k < 8; k++) add(df * k, dr * k);
+    };
+    const type = piece.toLowerCase();
+    if (type === "p") {
+      const ahead = piece === "P" ? 1 : -1;
+      add(0, ahead);
+      if (rank === (ahead === 1 ? 1 : 6)) add(0, 2 * ahead);
+      add(-1, ahead);
+      add(1, ahead);
+    }
+    if (type === "n") for (const [df, dr] of [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]]) add(df, dr);
+    if (type === "b" || type === "q") for (const [df, dr] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) ray(df, dr);
+    if (type === "r" || type === "q") for (const [df, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ray(df, dr);
+    if (type === "k") {
+      for (const df of [-1, 0, 1]) for (const dr of [-1, 0, 1]) if (df || dr) add(df, dr);
+      if (file === 4 && rank === (piece === "K" ? 0 : 7)) {
+        add(2, 0);
+        add(-2, 0);
+      }
+    }
+    return out;
+  }
+
+  // Your own arrows and marks, drawn with the right mouse button: drag between two squares for an
+  // arrow (draw it again to remove it), right-click one square to tint it red. A left click clears them.
+  // Returns { arrows: ["e2e4", ...], marks: ["f7", ...], clear() }; the page draws them. Hooks:
+  //   fen()                    current position (arrows follow the moves of the piece they start on)
+  //   changed({ cleared })     something changed: redraw. cleared: a left click wiped everything; the
+  //                            marked squares are already untinted, so only the arrows need redrawing
+  //                            (a full redraw could drop a piece that's being dragged)
+  //   plainRightClick(square)  optional: return true to use a right-click on one square for something else
+  function attachDrawing(boardEl, hooks) {
+    const drawn = { arrows: [], marks: [], clear() { drawn.arrows.length = 0; drawn.marks.length = 0; } };
+    let from = null; // square the right-button drag started on
+
+    function squareUnder(e) {
+      const hit = document.elementFromPoint(e.clientX, e.clientY);
+      const sq = hit && hit.closest(".sq");
+      return sq && boardEl.contains(sq) ? sq.dataset.square : null;
+    }
+
+    // From an empty square, arrows follow queen and knight lines.
+    function arrowBetween(a, b) {
+      if (!a || !b || a === b) return null;
+      const piece = pieceAt(hooks.fen(), a);
+      const squares = piece ? reach(a, piece) : [...reach(a, "Q"), ...reach(a, "N")];
+      return squares.includes(b) ? a + b : null;
+    }
+
+    function toggle(list, item) {
+      const i = list.indexOf(item);
+      if (i >= 0) list.splice(i, 1);
+      else list.push(item);
+    }
+
+    boardEl.addEventListener("pointerdown", (e) => {
+      if (e.button === 0) {
+        if (drawn.arrows.length || drawn.marks.length) {
+          drawn.clear();
+          boardEl.querySelectorAll(".sq.marked").forEach((sq) => sq.classList.remove("marked"));
+          hooks.changed({ cleared: true });
+        }
+        return;
+      }
+      if (e.button === 2) from = squareUnder(e);
+    });
+
+    // Nothing is drawn while you drag: the arrow appears when you let go.
+    window.addEventListener("pointerup", (e) => {
+      if (!from || e.button !== 2) return;
+      const start = from;
+      from = null;
+      const to = squareUnder(e);
+      const arrow = arrowBetween(start, to);
+      if (arrow) toggle(drawn.arrows, arrow);
+      else if (to !== start) return;
+      else if (hooks.plainRightClick && hooks.plainRightClick(start)) return;
+      else toggle(drawn.marks, start);
+      hooks.changed({ cleared: false });
+    });
+
+    boardEl.addEventListener("contextmenu", (e) => e.preventDefault()); // right-click is for drawing, not the browser menu
+    return drawn;
+  }
+
   // Small icons of the pieces `color` has captured, plus "+N" if that side is ahead.
   function capturedRow(fen, color) {
     const info = captured(fen);
@@ -364,5 +461,5 @@ const ChessBoard = (() => {
     return box;
   }
 
-  return { render, glide, drawArrows, pieceAt, pieceImage, attachInput, icon, LABELS, captured, capturedRow };
+  return { render, glide, drawArrows, pieceAt, pieceImage, attachInput, attachDrawing, reach, icon, LABELS, captured, capturedRow };
 })();

@@ -25,9 +25,13 @@ const state = {
   myColor: "white", // the side you actually play this game
   thinking: false,
   premove: null, // { from, to }: one move queued while Stockfish is thinking
-  arrows: [], // arrows you drew with the right mouse button, as "e2e4"-style square pairs
-  marks: [], // squares you tinted red with a right-click
+  // A game carried over from the Openings page ("Continue playing"): Stockfish's strength can be
+  // changed until the first move after the hand-over, then it's locked for the rest of the game.
+  continued: false,
+  eloLocked: false,
+  waiting: false, // Stockfish is to move but waits for "Start", so you can set its strength first
   ratings: [], // classification of each move ("best", "mistake", ...), filled in as Stockfish rates them
+  opening: null, // { eco, name } of the most specific book opening reached, if any
 };
 let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
 
@@ -108,15 +112,17 @@ async function load(moves, { glide = 0 } = {}) {
     status: data.status,
     turn: data.turn,
     gameOver: data.game_over,
+    opening: data.opening,
   });
   state.selected = null;
-  state.arrows = []; // drawn arrows and marks go away once a move is played
-  state.marks = [];
+  drawn.clear(); // drawn arrows and marks go away once a move is played
   state.ratings = state.ratings.slice(0, moves.length);
+  if (added && state.continued) state.eloLocked = true;
+  if (state.waiting && !enginesTurn()) state.waiting = false;
   render();
   const landed = added && glide ? ChessBoard.glide(boardEl, moves[moves.length - 1], glide) : Promise.resolve();
   rateLastMove();
-  if (enginesTurn()) engineMove();
+  if (enginesTurn() && !state.waiting) engineMove();
   else if (state.premove) {
     const premove = state.premove;
     landed.then(() => playPremove(premove));
@@ -152,6 +158,7 @@ async function engineMove() {
 
 function statusText() {
   if (!vsEngine() || state.gameOver) return state.status;
+  if (state.waiting) return "Set Stockfish's strength, then press Start";
   if (state.thinking || enginesTurn()) return state.premove ? "Stockfish is thinking… (premove set)" : "Stockfish is thinking…";
   return state.status.includes("in check") ? "Your move — you're in check" : "Your move";
 }
@@ -167,41 +174,7 @@ function targetsFrom(square) {
 function premoveTargets(square) {
   const piece = ChessBoard.pieceAt(state.fen, square);
   if (!piece || (piece === piece.toUpperCase()) !== (state.myColor === "white")) return [];
-  return reach(square, piece);
-}
-
-// Squares `piece` standing on `square` could move to on an empty board (plus castling).
-function reach(square, piece) {
-  const file = square.charCodeAt(0) - 97;
-  const rank = Number(square[1]) - 1;
-  const out = [];
-  const add = (df, dr) => {
-    const f = file + df;
-    const r = rank + dr;
-    if (f >= 0 && f < 8 && r >= 0 && r < 8) out.push(String.fromCharCode(97 + f) + (r + 1));
-  };
-  const ray = (df, dr) => {
-    for (let k = 1; k < 8; k++) add(df * k, dr * k);
-  };
-  const type = piece.toLowerCase();
-  if (type === "p") {
-    const ahead = piece === "P" ? 1 : -1;
-    add(0, ahead);
-    if (rank === (ahead === 1 ? 1 : 6)) add(0, 2 * ahead);
-    add(-1, ahead);
-    add(1, ahead);
-  }
-  if (type === "n") for (const [df, dr] of [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]]) add(df, dr);
-  if (type === "b" || type === "q") for (const [df, dr] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) ray(df, dr);
-  if (type === "r" || type === "q") for (const [df, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ray(df, dr);
-  if (type === "k") {
-    for (const df of [-1, 0, 1]) for (const dr of [-1, 0, 1]) if (df || dr) add(df, dr);
-    if (file === 4 && rank === (piece === "K" ? 0 : 7)) {
-      add(2, 0);
-      add(-2, 0);
-    }
-  }
-  return out;
+  return ChessBoard.reach(square, piece);
 }
 
 function setPremove(from, to) {
@@ -233,6 +206,9 @@ function renderElo() {
   $("#elo").value = state.elo;
   $("#elo-value").textContent = approximate ? `≈${state.elo}` : String(state.elo);
   $("#elo-note").classList.toggle("off", !approximate);
+  $("#elo").disabled = state.eloLocked;
+  $("#elo-locked").hidden = !state.eloLocked;
+  $("#start-engine").hidden = !state.waiting;
   $("#opponent").textContent = vsEngine()
     ? `You (${state.myColor}) vs Stockfish ${state.elo}`
     : "Two players — move both sides";
@@ -249,7 +225,7 @@ function render() {
     targets: state.selected ? targets(state.selected) : [],
     icon: last && rating ? { square: last.slice(2, 4), classification: rating } : null,
     premove: state.premove ? [state.premove.from, state.premove.to] : [],
-    marked: state.marks,
+    marked: drawn.marks,
   });
   drawUserArrows();
   $("#status").textContent = statusText();
@@ -257,7 +233,11 @@ function render() {
   for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);
   $("#engine-settings").hidden = !vsEngine();
   renderElo();
-  $("#color").value = state.colorChoice;
+  for (const b of document.querySelectorAll("[data-color]")) b.classList.toggle("active", b.dataset.color === state.colorChoice);
+  renderPlayers();
+  $("#opening").replaceChildren(...(state.opening
+    ? [ChessBoard.icon("book"), state.opening.name, Object.assign(document.createElement("span"), { className: "eco", textContent: state.opening.eco })]
+    : [state.moves.length ? "Out of the opening book" : "Make the first move"]));
   $("#to-analysis").disabled = state.moves.length === 0;
   $("#moves").replaceChildren(
     ...state.sans.map((san, i) => {
@@ -269,6 +249,27 @@ function render() {
       return item;
     })
   );
+}
+
+// Name strips above and below the board, with the pieces each side has captured.
+function renderPlayers() {
+  const names = players();
+  const bottom = state.flipped ? "black" : "white";
+  const top = bottom === "white" ? "black" : "white";
+  for (const [id, color] of [["#top-player", top], ["#bottom-player", bottom]]) {
+    const name = names[color] || (color === "white" ? "White" : "Black");
+    const avatar = document.createElement("span");
+    avatar.className = `avatar ${color}`;
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.textContent = name.startsWith("Stockfish") ? "SF" : name[0];
+    const info = document.createElement("div");
+    info.className = "pinfo";
+    const label = document.createElement("span");
+    label.className = "pname";
+    label.textContent = name === "You" ? `You · ${color}` : name;
+    info.append(label, ChessBoard.capturedRow(state.fen, color));
+    $(id).replaceChildren(avatar, info);
+  }
 }
 
 async function tryMove(from, to, { dragged = false } = {}) {
@@ -327,7 +328,7 @@ function showError(msg) {
 
 // While Stockfish is thinking, the same clicks and drags queue a premove instead.
 ChessBoard.attachInput(boardEl, {
-  canMove: () => $("#promotion").hidden && (canMove() || enginesTurn()),
+  canMove: () => $("#promotion").hidden && !state.waiting && (canMove() || enginesTurn()),
   targetsFrom: (square) => (enginesTurn() ? premoveTargets(square) : targetsFrom(square)),
   fen: () => state.fen,
   selected: () => state.selected,
@@ -342,62 +343,19 @@ ChessBoard.attachInput(boardEl, {
 
 // ---------- Your own arrows: right-click and drag ----------
 
-let arrowFrom = null; // square the right-button drag started on
-
-function squareUnder(e) {
-  const hit = document.elementFromPoint(e.clientX, e.clientY);
-  const sq = hit && hit.closest(".sq");
-  return sq && boardEl.contains(sq) ? sq.dataset.square : null;
-}
-
-// An arrow from `from` to `to` ("e2e4"), if the piece on `from` could make that move.
-// From an empty square, arrows follow queen and knight lines.
-function arrowBetween(from, to) {
-  if (!from || !to || from === to) return null;
-  const piece = ChessBoard.pieceAt(state.fen, from);
-  const squares = piece ? reach(from, piece) : [...reach(from, "Q"), ...reach(from, "N")];
-  return squares.includes(to) ? from + to : null;
-}
+const drawn = ChessBoard.attachDrawing(boardEl, {
+  fen: () => state.fen,
+  changed: ({ cleared }) => (cleared ? drawUserArrows() : render()),
+  plainRightClick: () => {
+    if (!state.premove) return false;
+    clearPremove(); // a plain right-click cancels the premove first
+    return true;
+  },
+});
 
 function drawUserArrows() {
-  ChessBoard.drawArrows($("#arrow-layer"), state.arrows.map((a) => [a, "user"]), state.flipped);
+  ChessBoard.drawArrows($("#arrow-layer"), drawn.arrows.map((a) => [a, "user"]), state.flipped);
 }
-
-boardEl.addEventListener("pointerdown", (e) => {
-  if (e.button === 0) {
-    if (state.arrows.length || state.marks.length) {
-      state.arrows = []; // a left click clears your arrows and marks
-      state.marks = [];
-      boardEl.querySelectorAll(".sq.marked").forEach((sq) => sq.classList.remove("marked")); // no redraw: a piece may be mid-drag
-      drawUserArrows();
-    }
-    return;
-  }
-  if (e.button !== 2) return;
-  arrowFrom = squareUnder(e);
-});
-
-// Nothing is drawn while you drag: the arrow appears when you let go.
-window.addEventListener("pointerup", (e) => {
-  if (!arrowFrom || e.button !== 2) return;
-  const from = arrowFrom;
-  const to = squareUnder(e);
-  const arrow = arrowBetween(from, to);
-  arrowFrom = null;
-  if (arrow) {
-    // Drawing the same arrow again removes it.
-    state.arrows = state.arrows.includes(arrow) ? state.arrows.filter((a) => a !== arrow) : [...state.arrows, arrow];
-  } else if (to === from && state.premove) {
-    clearPremove(); // a plain right-click cancels the premove first
-  } else if (to === from) {
-    // A plain right-click marks the square, or unmarks it.
-    state.marks = state.marks.includes(from) ? state.marks.filter((s) => s !== from) : [...state.marks, from];
-    render();
-  }
-  drawUserArrows();
-});
-
-boardEl.addEventListener("contextmenu", (e) => e.preventDefault()); // right-click is for arrows, not the browser menu
 
 // ---------- Buttons ----------
 
@@ -420,6 +378,7 @@ function newGame() {
   state.thinking = false;
   state.premove = null;
   state.ratings = [];
+  Object.assign(state, { continued: false, eloLocked: false, waiting: false });
   if (vsEngine()) {
     state.myColor = state.colorChoice === "random" ? (Math.random() < 0.5 ? "white" : "black") : state.colorChoice;
     state.flipped = state.myColor === "black";
@@ -431,11 +390,53 @@ function newGame() {
   load([]).catch((err) => showError(err.message));
 }
 
+// Pick up a game from the Openings page: you against Stockfish from that position.
+function continueGame({ moves, color }) {
+  engineRequest++;
+  Object.assign(state, {
+    mode: "engine",
+    myColor: color,
+    colorChoice: color,
+    flipped: color === "black",
+    thinking: false,
+    premove: null,
+    ratings: [],
+    continued: true,
+    eloLocked: false,
+    waiting: true, // cleared by load() if it's your move
+  });
+  saveSettings();
+  showError("");
+  load(moves).catch((err) => {
+    showError(err.message);
+    newGame();
+  });
+}
+
+// The game carried over from the Openings page, if there is one (read once).
+function takeContinuedGame() {
+  try {
+    const raw = sessionStorage.getItem("continueGame");
+    sessionStorage.removeItem("continueGame");
+    const game = JSON.parse(raw || "null");
+    if (game && Array.isArray(game.moves) && ["white", "black"].includes(game.color)) return game;
+  } catch (e) {
+    // no game to continue
+  }
+  return null;
+}
+
 function confirmRestart() {
   return state.moves.length === 0 || state.gameOver || confirm("Start a new game? The current game will be lost.");
 }
 
 $("#undo").addEventListener("click", undo);
+$("#start-engine").addEventListener("click", () => {
+  state.waiting = false;
+  state.eloLocked = true;
+  render();
+  engineMove();
+});
 $("#reset").addEventListener("click", newGame);
 
 document.querySelectorAll("[data-mode]").forEach((b) =>
@@ -445,15 +446,18 @@ document.querySelectorAll("[data-mode]").forEach((b) =>
     newGame();
   })
 );
-$("#color").addEventListener("change", (e) => {
-  if (!confirmRestart()) return render();
-  state.colorChoice = e.target.value;
-  newGame();
-});
+document.querySelectorAll("[data-color]").forEach((b) =>
+  b.addEventListener("click", () => {
+    if (b.dataset.color === state.colorChoice || !confirmRestart()) return;
+    state.colorChoice = b.dataset.color;
+    newGame();
+  })
+);
 $("#elo").addEventListener("input", (e) => {
   state.elo = Number(e.target.value);
   saveSettings();
   renderElo(); // only the labels change: no need to redraw the board while sliding
+  renderPlayers();
 });
 $("#flip").addEventListener("click", () => {
   state.flipped = !state.flipped;
@@ -468,6 +472,9 @@ $("#to-analysis").addEventListener("click", () => {
   location.href = "/analysis";
 });
 
-// Every visit starts a fresh game (your opponent settings are remembered).
+// Every visit starts a fresh game (your opponent settings are remembered),
+// unless you came from the Openings page to continue a game.
 loadSettings();
-newGame();
+const continued = takeContinuedGame();
+if (continued) continueGame(continued);
+else newGame();

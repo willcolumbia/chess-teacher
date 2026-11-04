@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings · Chess Teacher</title>
+  <script src="/static/settings.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@600;700&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="site-nav">
+      <a class="brand" href="/"><span class="logo"><img src="/static/pieces/bN.svg" alt=""></span>Chess Teacher</a>
+      <div class="links">
+        <a href="/">Play</a>
+        <a href="/openings">Openings</a>
+        <a href="/analysis">Analysis</a>
+      </div>
+      <a href="/settings" class="settings-link active" aria-current="page" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></a>
+    </nav>
+  </header>
+
+  <main class="screen">
+    <h1>Settings</h1>
+    <p class="muted">Change how every page looks. Saved in this browser and applied right away.</p>
+
+    <div class="settings">
+      <section class="card settings-options" aria-label="Appearance">
+        <div class="setting">
+          <h3 id="theme-label">Theme</h3>
+          <div class="segmented" role="group" aria-labelledby="theme-label">
+            <button data-theme-choice="dark">Dark</button>
+            <button data-theme-choice="light">Light</button>
+            <button data-theme-choice="system">Match device</button>
+          </div>
+        </div>
+
+        <div class="setting">
+          <h3 id="accent-label">Accent color</h3>
+          <div class="swatches" id="accents" role="group" aria-labelledby="accent-label"></div>
+        </div>
+
+        <div class="setting">
+          <h3 id="board-label">Board</h3>
+          <div class="swatches" id="boards" role="group" aria-labelledby="board-label"></div>
+        </div>
+
+        <div class="setting">
+          <h3 id="coords-label">Coordinates on the board</h3>
+          <div class="segmented" role="group" aria-labelledby="coords-label">
+            <button data-coords-choice="on">Show</button>
+            <button data-coords-choice="off">Hide</button>
+          </div>
+        </div>
+
+        <div class="setting">
+          <h3 id="motion-label">Piece animation</h3>
+          <div class="segmented" role="group" aria-labelledby="motion-label">
+            <button data-motion-choice="normal">Normal</button>
+            <button data-motion-choice="fast">Fast</button>
+            <button data-motion-choice="off">Off</button>
+          </div>
+        </div>
+
+        <button id="reset" class="reset">Reset to defaults</button>
+      </section>
+
+      <section class="settings-preview" aria-label="Preview">
+        <div class="board-area">
+          <div id="board" class="board" aria-label="Preview board"></div>
+          <svg class="arrows" viewBox="0 0 8 8" aria-hidden="true">
+            <defs>
+              <marker id="head-best" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-best-head"/></marker>
+            </defs>
+            <g id="arrow-layer"></g>
+          </svg>
+        </div>
+        <div class="row preview-bar">
+          <span class="chip you">Your move</span>
+          <span class="with-icon class-label t-best" id="preview-label"></span>
+          <button id="replay" class="primary">Play the move again</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/board.js"></script>
+  <script src="/static/settings-page.js"></script>
+</body>
+</html>

@@ -4,6 +4,7 @@
            (moves are checked by /api/play; the engine answers via /api/engine-move)
 /openings  opening trainer (/api/openings, /api/openings/turn)
 /analysis  paste a PGN; analysis runs in a background thread and the page polls for it
+/settings  theme, accent color, board colors and animation
 """
 from __future__ import annotations
 
@@ -97,6 +98,11 @@ def analysis_page():
     return send_from_directory(STATIC, "analysis.html")
 
 
+@app.get("/settings")
+def settings_page():
+    return send_from_directory(STATIC, "settings.html")
+
+
 @app.get("/static/<path:name>")
 def static_file(name):
     return send_from_directory(STATIC, name)
@@ -160,6 +166,7 @@ def play():
             "sans": sans,
             "status": game_status(board),
             "game_over": over,
+            "opening": book.opening_name(board),
             "pgn": str(game),
         }
     )

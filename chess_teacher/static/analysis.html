@@ -4,47 +4,91 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Analysis · Chess Teacher</title>
+  <script src="/static/settings.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@600;700&display=swap">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <nav class="site-nav">
-    <a class="brand" href="/">Chess Teacher</a>
-    <a href="/">Home</a>
-    <a href="/openings">Openings</a>
-    <a href="/analysis" class="active" aria-current="page">Analysis</a>
-  </nav>
+  <header class="site-header">
+    <nav class="site-nav">
+      <a class="brand" href="/"><span class="logo"><img src="/static/pieces/bN.svg" alt=""></span>Chess Teacher</a>
+      <div class="links">
+        <a href="/">Play</a>
+        <a href="/openings">Openings</a>
+        <a href="/analysis" class="active" aria-current="page">Analysis</a>
+      </div>
+      <a href="/settings" class="settings-link" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></a>
+    </nav>
+  </header>
+
   <!-- Screen 1: paste the game -->
-  <section id="screen-input" class="screen">
-    <div class="card narrow">
-      <h1>Analysis</h1>
-      <p class="muted">Pick one of your recent Chess.com games, or paste any game, and we'll go through it together, move by move.</p>
+  <section id="screen-input" class="screen start">
+    <div class="start-head">
+      <h1>Analyze a game</h1>
+      <p class="muted">Stockfish checks every move, then we go through the game together and look at what was better.</p>
+    </div>
 
-      <label class="grow">Your Chess.com username
-        <input type="text" id="username" placeholder="shows your recent games and which side you played" autocomplete="off">
-      </label>
-      <h3>Your recent Chess.com games</h3>
-      <div id="recent" class="recent"></div>
+    <section class="card" aria-labelledby="depth-label">
+      <div class="section-title">
+        <h2 id="depth-label">Analysis depth</h2>
+        <span>How far ahead Stockfish looks on each move</span>
+      </div>
+      <div class="depth-options" role="radiogroup" aria-labelledby="depth-label">
+        <label class="depth-option"><input type="radio" name="depth" value="12"><span class="dot" aria-hidden="true"></span><span><strong>Fast</strong><small>A quick first look</small></span></label>
+        <label class="depth-option"><input type="radio" name="depth" value="16" checked><span class="dot" aria-hidden="true"></span><span><strong>Normal</strong><small>Recommended</small></span></label>
+        <label class="depth-option"><input type="radio" name="depth" value="20"><span class="dot" aria-hidden="true"></span><span><strong>Deep</strong><small>Most accurate, slower</small></span></label>
+      </div>
+    </section>
 
-      <label for="pgn">Or paste any game (PGN)</label>
-      <textarea id="pgn" rows="10" spellcheck="false"
-        placeholder="On Chess.com: open the game → Share → PGN → Copy, then paste it here."></textarea>
-      <div class="pgn-tools">
-        <label class="file"><input type="file" id="file" accept=".pgn,text/plain"><span>…or load a .pgn file</span></label>
-        <button type="button" id="clear-pgn" class="small-button">Clear</button>
+    <section class="card source-card">
+      <div class="section-title"><h2>Choose the game</h2></div>
+      <div class="tabs" role="tablist" aria-label="Where the game comes from">
+        <button role="tab" id="tab-chesscom" data-tab="chesscom" aria-controls="panel-chesscom">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+          My Chess.com games
+        </button>
+        <button role="tab" id="tab-pgn" data-tab="pgn" aria-controls="panel-pgn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+          Paste or upload a PGN
+        </button>
       </div>
 
-      <div class="row">
-        <label>Analysis depth
-          <select id="depth">
-            <option value="12">Fast</option>
-            <option value="16" selected>Normal</option>
-            <option value="20">Deep (slower)</option>
-          </select>
+      <div id="panel-chesscom" class="tab-panel" role="tabpanel" aria-labelledby="tab-chesscom">
+        <div class="user-row">
+          <label class="grow">Chess.com username
+            <input type="text" id="username" placeholder="your Chess.com username" autocomplete="off">
+          </label>
+          <button type="button" id="show-games">Show my games</button>
+        </div>
+        <div class="recent-head">
+          <h3>Recent games</h3>
+          <span>Last two months · updates every minute</span>
+        </div>
+        <div id="recent" class="recent"></div>
+        <p class="muted small">Click a game to analyze it. We'll know which side you played from your username.</p>
+      </div>
+
+      <div id="panel-pgn" class="tab-panel" role="tabpanel" aria-labelledby="tab-pgn" hidden>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="file" accept=".pgn,text/plain">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <strong>Drop a .pgn file here</strong>
+          <span class="muted small">Any game works, yours or someone else's.</span>
+          <span class="fake-button">Choose a file</span>
         </label>
+        <div class="or">or paste it</div>
+        <div class="pgn-head">
+          <label for="pgn">PGN</label>
+          <button type="button" id="clear-pgn" class="small-button">Clear</button>
+        </div>
+        <textarea id="pgn" rows="8" spellcheck="false"
+          placeholder="On Chess.com: open the game → Share → PGN → Copy, then paste it here."></textarea>
+        <button id="analyze" class="primary big">Analyze this game</button>
       </div>
       <p id="error" class="error" hidden></p>
-      <button id="analyze" class="primary big">Analyze my game</button>
-    </div>
+    </section>
   </section>
 
   <!-- Screen 2: analyzing -->
@@ -70,10 +114,13 @@
   <section id="screen-walk" class="screen" hidden>
     <header class="walk-head">
       <div>
-        <strong id="game-title"></strong>
-        <span class="muted" id="game-sub"></span>
+        <h1 id="game-title"></h1>
+        <div class="chips" id="game-sub"></div>
       </div>
-      <button id="new-game">New game</button>
+      <div class="row">
+        <button id="next-mistake">Next mistake</button>
+        <button id="new-game">Analyze another game</button>
+      </div>
     </header>
 
     <div id="timeline" class="timeline" aria-label="Game timeline"></div>
@@ -106,17 +153,28 @@
           <button id="idea-close" title="Close (Esc)">✕ Close</button>
         </div>
         <p class="caption muted" id="caption"></p>
+        <nav class="stepper" aria-label="Step through the game">
+          <button id="prev">◀ Back</button>
+          <span id="counter" class="muted"></span>
+          <button id="next" class="primary">Next ▶</button>
+        </nav>
       </div>
 
       <div class="card step" id="step"></div>
     </div>
 
-    <nav class="stepper">
-      <button id="prev">◀ Back</button>
-      <span id="counter" class="muted"></span>
-      <button id="next" class="primary">Next ▶</button>
-    </nav>
-    <p class="keys muted">Keys: ← → step · n next mistake · b better move · w show why better · x show why a mistake · f flip board · in "show why": ← → space Esc</p>
+    <div class="walk-extra">
+      <section class="card" aria-label="Moves">
+        <h3>Moves</h3>
+        <div id="move-list" class="move-list"></div>
+      </section>
+      <section class="card" aria-label="Game report">
+        <h3>Game report</h3>
+        <div id="report"></div>
+      </section>
+    </div>
+
+    <p class="keys">Keys: ← → step · n next mistake · b better move · w show why better · x show why a mistake · f flip board · in "show why": ← → space Esc</p>
   </section>
 
   <script src="/static/board.js"></script>

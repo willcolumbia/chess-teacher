@@ -7,6 +7,7 @@
 const $ = (sel) => document.querySelector(sel);
 const boardEl = $("#board");
 const REPLY_DELAY_MS = 600;
+const GLIDE_MS = { reply: 330, click: 200 }; // how long a piece takes to slide over, as on the Play page
 
 const state = {
   openings: [],
@@ -221,6 +222,10 @@ async function apply(data, fenBefore) {
     selected: null,
   });
   if (data.variation) state.variation = data.variation;
+  if (data.reply) {
+    render();
+    await ChessBoard.glide(boardEl, data.reply.uci, GLIDE_MS.reply);
+  }
 
   if (state.expected && wasBook && state.expected.source === "engine") {
     addLog({
@@ -260,8 +265,8 @@ function feedbackEntry(fb, playedLabel, fenBefore) {
     preview: fenBefore
       ? {
           fen: fenBefore,
-          arrows: [[fb.played.uci, "played"], [exp.uci, "best"]],
-          caption: `Red: what you played (${fb.played.san}). Green: the ${source} move (${exp.san}).`,
+          arrows: [[fb.played.uci, "played"], [exp.uci, "user"]],
+          caption: `Red: what you played (${fb.played.san}). Yellow: the ${source} move (${exp.san}).`,
         }
       : null,
   };
@@ -276,21 +281,29 @@ function targetsFrom(square) {
 const traineeToMove = () => state.fen.split(" ")[1] === (state.opening && state.opening.color === "white" ? "w" : "b");
 const canMove = () => !state.busy && !state.done && !state.preview && traineeToMove();
 
+// Like the Play page, the last move is shown by its squares, not an arrow. Your own right-click arrows
+// and the move to play (Learn mode, or after a hint) use the same yellow arrow as the Play page.
+function drawBoardArrows() {
+  const view = state.preview;
+  const arrows = view ? [...view.arrows] : drawn.arrows.map((a) => [a, "user"]);
+  if (!view && state.hint >= 2 && state.expected) arrows.push([state.expected.uci, "user"]);
+  ChessBoard.drawArrows($("#arrow-layer"), arrows, state.flipped);
+}
+
 function render() {
   if (!state.opening) return;
   const view = state.preview;
-  const arrows = view ? view.arrows : [];
-  if (!view && state.lastMove) arrows.push([state.lastMove, "last"]);
-  if (!view && state.hint >= 2 && state.expected) arrows.push([state.expected.uci, "best"]);
   ChessBoard.render(boardEl, view ? view.fen : state.fen, {
     flipped: state.flipped,
     highlight: !view && state.lastMove ? [state.lastMove.slice(0, 2), state.lastMove.slice(2, 4)] : [],
     selected: view ? null : state.selected,
     targets: !view && state.selected ? targetsFrom(state.selected) : [],
     icon: view ? null : state.mark,
+    marked: view ? [] : drawn.marks,
   });
-  ChessBoard.drawArrows($("#arrow-layer"), arrows, state.flipped);
-  $("#caption").textContent = view ? view.caption : state.hint >= 2 && state.expected ? `Green: ${state.expected.san}` : "";
+  renderPlayers(view ? view.fen : state.fen);
+  drawBoardArrows();
+  $("#caption").textContent = view ? view.caption : state.hint >= 2 && state.expected ? `Yellow: ${state.expected.san}` : "";
 
   $("#drill-variation").hidden = !state.variation;
   $("#drill-variation").textContent = state.variation || "";
@@ -357,7 +370,7 @@ function recapEntry() {
     el("div", { class: "row" },
       el("button", { class: "primary", onclick: () => start(state.opening) }, "Practice again"),
       el("button", { onclick: () => show("pick") }, "Another opening"),
-      el("button", { onclick: analyze }, "Analyze this game")));
+      el("button", { onclick: continuePlaying }, "Continue playing vs Stockfish")));
 }
 
 function renderPrompt() {
@@ -368,13 +381,13 @@ function renderPrompt() {
     box.replaceChildren(
       el("p", {}, el("strong", {}, `Play ${state.expected.san}`), state.expected.source === "book" ? " (book move)" : " (Stockfish's move)"),
       el("p", { class: "hint" }, state.expected.idea),
-      el("p", { class: "muted small" }, "Follow the green arrow.")
+      el("p", { class: "muted small" }, "Follow the yellow arrow.")
     );
     return;
   }
   const nodes = [el("p", {}, el("strong", {}, "Your move."), state.expected.source === "book" ? " Play the book move." : " Play Stockfish's recommended move.")];
   if (state.hint >= 1) nodes.push(el("p", { class: "hint" }, `Hint: ${state.expected.idea}`));
-  if (state.hint >= 2) nodes.push(el("p", { class: "hint" }, `The move is ${state.expected.san} (green arrow).`));
+  if (state.hint >= 2) nodes.push(el("p", { class: "hint" }, `The move is ${state.expected.san} (yellow arrow).`));
   nodes.push(el("div", { class: "row" },
     state.hint < 1 ? el("button", { onclick: () => setHint(1) }, "Hint") : null,
     state.hint < 2 ? el("button", { onclick: () => setHint(2) }, "Show the move") : null));
@@ -393,7 +406,7 @@ function showError(msg) {
 
 // ---------- Moves ----------
 
-async function onMove(from, to) {
+async function onMove(from, to, how = {}) {
   const candidates = state.legal.filter((u) => u.startsWith(from + to));
   if (!candidates.length) return;
   const uci = candidates.find((u) => u.length === 4 || u.endsWith("q")) || candidates[0];
@@ -408,7 +421,9 @@ async function onMove(from, to) {
     const quick = await post("/api/play", { moves: [...state.moves, uci] });
     state.fen = quick.fen;
     state.lastMove = uci;
+    drawn.clear(); // your arrows and marks go away once you move, as on the Play page
     render();
+    if (!how.dragged) ChessBoard.glide(boardEl, uci, GLIDE_MS.click); // a dragged piece is already there
     const data = await post("/api/openings/turn", { opening: state.opening.id, moves: [...state.moves, uci] });
     state.hint = hintLevel;
     await apply(data, fenBefore);
@@ -417,6 +432,25 @@ async function onMove(from, to) {
   } finally {
     state.busy = false;
     render();
+  }
+}
+
+// Name strips above and below the board, with the pieces each side has captured.
+function renderPlayers(fen) {
+  const mine = state.opening.color;
+  const bottom = state.flipped ? "black" : "white";
+  for (const [id, color] of [["#top-player", bottom === "white" ? "black" : "white"], ["#bottom-player", bottom]]) {
+    const avatar = document.createElement("span");
+    avatar.className = `avatar ${color}`;
+    avatar.setAttribute("aria-hidden", "true");
+    const info = document.createElement("div");
+    info.className = "pinfo";
+    const name = document.createElement("span");
+    name.className = "pname";
+    name.textContent = color === mine ? `You · ${color}` : `Opponent · ${color}`;
+    avatar.textContent = color === mine ? "Y" : "O";
+    info.append(name, ChessBoard.capturedRow(fen, color));
+    $(id).replaceChildren(avatar, info);
   }
 }
 
@@ -432,16 +466,19 @@ ChessBoard.attachInput(boardEl, {
   move: onMove,
 });
 
-async function analyze() {
+const drawn = ChessBoard.attachDrawing(boardEl, {
+  fen: () => (state.preview ? state.preview.fen : state.fen),
+  changed: ({ cleared }) => (cleared ? drawBoardArrows() : render()), // a left click may be picking up a piece: don't redraw the board
+});
+
+// Take this position to the Play page and play it out against Stockfish.
+function continuePlaying() {
   try {
-    const white = state.opening.color === "white" ? "You" : "Opponent";
-    const black = state.opening.color === "white" ? "Opponent" : "You";
-    const data = await post("/api/play", { moves: state.moves, white, black });
-    sessionStorage.setItem("pendingPgn", data.pgn);
+    sessionStorage.setItem("continueGame", JSON.stringify({ moves: state.moves, color: state.opening.color }));
   } catch (e) {
-    // the analysis page will just start empty
+    // the Play page will just start a fresh game
   }
-  location.href = "/analysis";
+  location.href = "/";
 }
 
 $("#restart").addEventListener("click", () => state.opening && start(state.opening));

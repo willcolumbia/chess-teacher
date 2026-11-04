@@ -4,38 +4,28 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chess Teacher</title>
+  <script src="/static/settings.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@600;700&display=swap">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <nav class="site-nav">
-    <a class="brand" href="/">Chess Teacher</a>
-    <a href="/" class="active" aria-current="page">Home</a>
-    <a href="/openings">Openings</a>
-    <a href="/analysis">Analysis</a>
-  </nav>
+  <header class="site-header">
+    <nav class="site-nav">
+      <a class="brand" href="/"><span class="logo"><img src="/static/pieces/bN.svg" alt=""></span>Chess Teacher</a>
+      <div class="links">
+        <a href="/" class="active" aria-current="page">Play</a>
+        <a href="/openings">Openings</a>
+        <a href="/analysis">Analysis</a>
+      </div>
+      <a href="/settings" class="settings-link" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></a>
+    </nav>
+  </header>
 
   <main class="home">
     <div class="play">
-      <div class="setup">
-        <div class="segmented" role="group" aria-label="Opponent">
-          <button data-mode="human">Two players</button>
-          <button data-mode="engine">Play vs Stockfish</button>
-        </div>
-        <div id="engine-settings" class="row" hidden>
-          <label class="elo">Engine strength (Elo)
-            <span class="row"><input type="range" id="elo" min="400" max="3000" step="50"> <strong id="elo-value"></strong></span>
-            <span id="elo-note" class="elo-note small">≈ Approximate: below 1320 the app weakens Stockfish itself</span>
-          </label>
-          <label>You play
-            <select id="color">
-              <option value="white">White</option>
-              <option value="black">Black</option>
-              <option value="random">Random</option>
-            </select>
-          </label>
-        </div>
-        <p id="opponent" class="muted small"></p>
-      </div>
+      <div class="player" id="top-player"></div>
       <div class="board-area">
         <div id="board" class="board playable" aria-label="Chess board"></div>
         <svg class="arrows" viewBox="0 0 8 8" aria-hidden="true">
@@ -46,17 +36,54 @@
         </svg>
         <div id="promotion" class="promotion" hidden></div>
       </div>
-      <div class="play-bar">
-        <strong id="status" class="status"></strong>
-        <div class="row">
-          <button id="undo">Undo</button>
-          <button id="flip">Flip</button>
-          <button id="reset">New game</button>
-          <button id="to-analysis" class="primary">Analyze this game</button>
-        </div>
+      <div class="player">
+        <div class="player" id="bottom-player"></div>
+        <strong id="status" class="turn" aria-live="polite"></strong>
       </div>
-      <p id="moves" class="line"></p>
       <p id="error" class="error" hidden></p>
+    </div>
+
+    <div class="play-side">
+      <section class="card setup" aria-label="Game setup">
+        <h1>Play a game</h1>
+        <div class="segmented" role="group" aria-label="Opponent">
+          <button data-mode="human">Two players</button>
+          <button data-mode="engine">vs Stockfish</button>
+        </div>
+        <div id="engine-settings" class="setup" hidden>
+          <div class="elo-head">
+            <label for="elo" class="field-label">Engine strength</label>
+            <strong id="elo-value"></strong>
+          </div>
+          <input type="range" id="elo" min="400" max="3000" step="50">
+          <div class="elo-scale">
+            <span>400 · Beginner</span>
+            <span id="elo-note" class="elo-note">≈ Approximate below 1320</span>
+            <span>3000 · Grandmaster+</span>
+          </div>
+          <p id="elo-locked" class="muted small" hidden>Strength is set for this game. Start a new game to change it.</p>
+          <button id="start-engine" class="primary" hidden>Start</button>
+          <p class="field-label" style="margin: 18px 0 8px">You play</p>
+          <div class="sides" role="group" aria-label="Your side">
+            <button data-color="white"><img src="/static/pieces/wK.svg" alt="">White</button>
+            <button data-color="black"><img src="/static/pieces/bK.svg" alt="">Black</button>
+            <button data-color="random">Random</button>
+          </div>
+        </div>
+        <p id="opponent" class="muted small"></p>
+      </section>
+
+      <section class="card game-card" aria-label="This game">
+        <div class="opening" id="opening"></div>
+        <p id="moves" class="line"></p>
+      </section>
+
+      <div class="actions">
+        <button id="undo">Undo</button>
+        <button id="flip">Flip</button>
+        <button id="reset">New game</button>
+      </div>
+      <button id="to-analysis" class="primary">Analyze this game</button>
     </div>
   </main>
 
