@@ -30,10 +30,13 @@ const state = {
   continued: false,
   eloLocked: false,
   waiting: false, // Stockfish is to move but waits for "Start", so you can set its strength first
+  hint: null, // "Best move": { uci, san } for your current position, shown as a green arrow
+  hintLoading: false,
   ratings: [], // classification of each move ("best", "mistake", ...), filled in as Stockfish rates them
   opening: null, // { eco, name } of the most specific book opening reached, if any
 };
 let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
+let hintRequest = 0; // same, for the "Best move" hint
 
 const STOCKFISH_MIN_ELO = 1320; // below this the engine's strength is our approximation
 const ENGINE_THINK_MS = [900, 1600]; // Stockfish waits a random time in this range before moving
@@ -116,6 +119,9 @@ async function load(moves, { glide = 0 } = {}) {
   });
   state.selected = null;
   drawn.clear(); // drawn arrows and marks go away once a move is played
+  state.hint = null; // so does the best-move hint
+  state.hintLoading = false;
+  hintRequest++;
   state.ratings = state.ratings.slice(0, moves.length);
   if (added && state.continued) state.eloLocked = true;
   if (state.waiting && !enginesTurn()) state.waiting = false;
@@ -159,6 +165,7 @@ async function engineMove() {
 function statusText() {
   if (!vsEngine() || state.gameOver) return state.status;
   if (state.waiting) return "Set Stockfish's strength, then press Start";
+  if (state.hint && canMove()) return `Your move — best is ${state.hint.san}`;
   if (state.thinking || enginesTurn()) return state.premove ? "Stockfish is thinking… (premove set)" : "Stockfish is thinking…";
   return state.status.includes("in check") ? "Your move — you're in check" : "Your move";
 }
@@ -228,6 +235,7 @@ function render() {
     marked: drawn.marks,
   });
   drawUserArrows();
+  renderHintButton();
   $("#status").textContent = statusText();
   $("#undo").disabled = state.moves.length === 0;
   for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);
@@ -285,6 +293,7 @@ async function tryMove(from, to, { dragged = false } = {}) {
   try {
     await load([...state.moves, uci], { glide: dragged ? 0 : GLIDE_MS.click }); // a dragged piece is already there
   } catch (err) {
+    render(); // put a dropped piece back
     showError(err.message);
   }
 }
@@ -354,7 +363,49 @@ const drawn = ChessBoard.attachDrawing(boardEl, {
 });
 
 function drawUserArrows() {
-  ChessBoard.drawArrows($("#arrow-layer"), drawn.arrows.map((a) => [a, "user"]), state.flipped);
+  const arrows = drawn.arrows.map((a) => [a, "user"]);
+  if (state.hint) arrows.push([state.hint.uci, "best"]);
+  ChessBoard.drawArrows($("#arrow-layer"), arrows, state.flipped);
+}
+
+// ---------- "Best move": Stockfish's choice for you (never for Stockfish's side) ----------
+
+async function toggleHint() {
+  if (state.hint) {
+    state.hint = null;
+    return render();
+  }
+  if (!vsEngine() || !canMove() || state.hintLoading) return;
+  const moves = state.moves.slice();
+  const request = ++hintRequest;
+  state.hintLoading = true;
+  render();
+  try {
+    const res = await fetch("/api/best", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moves }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Stockfish couldn't find a move.");
+    if (request !== hintRequest) return; // a move, undo or new game happened meanwhile
+    state.hint = { uci: data.uci, san: data.san };
+  } catch (err) {
+    if (request === hintRequest) showError(err.message);
+  } finally {
+    if (request === hintRequest) {
+      state.hintLoading = false;
+      render();
+    }
+  }
+}
+
+function renderHintButton() {
+  const button = $("#best-move");
+  button.hidden = !vsEngine();
+  button.disabled = !state.hint && (!canMove() || state.hintLoading);
+  button.classList.toggle("active", !!state.hint);
+  button.textContent = state.hintLoading ? "Thinking…" : state.hint ? "Hide best move" : "Best move";
 }
 
 // ---------- Buttons ----------
@@ -431,6 +482,7 @@ function confirmRestart() {
 }
 
 $("#undo").addEventListener("click", undo);
+$("#best-move").addEventListener("click", toggleHint);
 $("#start-engine").addEventListener("click", () => {
   state.waiting = false;
   state.eloLocked = true;

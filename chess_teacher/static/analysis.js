@@ -352,6 +352,7 @@ function buildReport() {
 
 function go(step) {
   const forward = step === state.step + 1;
+  leaveLine();
   stopIdea();
   idea.index = null;
   state.step = Math.max(0, Math.min(lastStep(), step));
@@ -380,7 +381,15 @@ function render() {
 
   const hasBetter = m && m.best_uci !== m.uci;
   const showingIdea = m && idea.index !== null;
-  $("#idea-controls").hidden = !showingIdea;
+  $("#idea-controls").hidden = !showingIdea || !!line;
+  $("#explore-bar").hidden = !line;
+
+  if (line) {
+    renderLine();
+    const back = el("button", { class: "primary back-to-game", title: "Esc", onclick: exitLine }, "◀ Back to the game");
+    renderStep([back, ...(m ? moveCard(m) : state.step === 0 ? introCard() : summaryCard())]);
+    return;
+  }
 
   if (!m) {
     const fen = state.step === 0 ? state.result.start_fen : state.result.final_fen;
@@ -444,7 +453,7 @@ function introCard() {
     el("p", {}, `You played ${state.myColor === "white" ? "White" : "Black"}. We'll step through all ${moves().length} moves — yours and your opponent's — and look at what each one does, whether it was good, and what was better.`),
     ...playersBlock(),
     el("p", { class: "callout" }, mine.length
-      ? "Your mistakes are marked in color on the timeline above. Press Start to begin from move 1, or n to jump straight to your next mistake."
+      ? "Your mistakes are marked in color on the timeline above. Press Start to begin from move 1, or n to jump straight to your next mistake. At any point you can move the pieces yourself to try your own line."
       : "No inaccuracies, mistakes or blunders from you. Press Start to walk through the game anyway."),
   ];
 }
@@ -633,6 +642,7 @@ function formatClock(seconds) {
 }
 
 function setView(view) {
+  leaveLine();
   stopIdea();
   idea.index = null;
   state.view = view;
@@ -741,6 +751,7 @@ function renderIdea(m) {
 function startIdea(kind) {
   const m = moves()[state.step - 1];
   if (!m || !IDEA_KINDS[kind].moves(m).length) return;
+  leaveLine();
   idea.kind = kind;
   idea.index = 0;
   playIdea();
@@ -792,15 +803,228 @@ function closeIdea() {
   render();
 }
 
+// ---------- Your own line ----------
+// Move any piece on the board (for the side to move) to play out your own line from whatever is
+// showing: a move of the game, the best move, or a "Show why" playback. Stockfish rates each move.
+// "Back to the game" (or Esc, or any step through the game) returns to exactly where you were.
+
+let line = null; // { path, startFen, startEval, from, moves, fens, sans, statuses, ratings, index }
+let picked = null; // selected square on the board
+let lineRequest = 0; // bumped to drop answers that arrive after the line has changed
+const legalCache = new Map(); // FEN → its legal moves (UCI), fetched when first needed
+
+// UCI moves from the game's start to the position the board is showing.
+function shownPath() {
+  const m = moves()[state.step - 1];
+  const prefix = (n) => moves().slice(0, n).map((x) => x.uci);
+  if (!m) return state.step === 0 ? [] : prefix(moves().length);
+  if (idea.index !== null) return [...prefix(state.step - 1), ...ideaLine(m).slice(0, idea.index).map((p) => p.uci)];
+  if (state.view === "better" && m.best_uci !== m.uci) return bestMove.played ? [...prefix(state.step - 1), m.best_uci] : prefix(state.step - 1);
+  return prefix(state.step);
+}
+
+const lineFen = () => (line ? (line.index ? line.fens[line.index - 1] : line.startFen) : state.shownFen);
+
+async function fetchLegal(fen) {
+  if (legalCache.has(fen)) return legalCache.get(fen);
+  const res = await fetch("/api/play", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fen, moves: [] }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Couldn't read this position.");
+  legalCache.set(fen, data.legal);
+  return data.legal;
+}
+
+function targetsFrom(square) {
+  const legal = legalCache.get(lineFen()) || [];
+  return [...new Set(legal.filter((u) => u.startsWith(square)).map((u) => u.slice(2, 4)))];
+}
+
+function startLine() {
+  const m = moves()[state.step - 1];
+  stopIdea(); // a playback stays where it is; "Back to the game" returns to it
+  clearTimeout(bestMove.timer);
+  line = {
+    path: shownPath(),
+    startFen: state.shownFen,
+    startEval: state.shownEval,
+    from: m ? moveLabel(m) : state.step === 0 ? "the start" : "the final position",
+    moves: [], fens: [], sans: [], statuses: [], ratings: [],
+    index: 0,
+  };
+}
+
+async function playLineMove(from, to, how) {
+  const legal = legalCache.get(lineFen()) || [];
+  const uci = legal.find((u) => u.startsWith(from + to) && (u.length === 4 || u.endsWith("q"))); // promotions become a queen
+  picked = null;
+  if (!uci) return render();
+  if (!line) startLine();
+  for (const key of ["moves", "fens", "sans", "statuses", "ratings"]) line[key].length = line.index; // a new move replaces what came after
+  const path = [...line.path, ...line.moves, uci];
+  const request = ++lineRequest;
+  try {
+    const res = await fetch("/api/play", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fen: state.result.start_fen, moves: path }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Couldn't play that move.");
+    if (request !== lineRequest || !line) return;
+    line.moves.push(uci);
+    line.fens.push(data.fen);
+    line.sans.push(data.sans[data.sans.length - 1]);
+    line.statuses.push(data.game_over ? data.status : "");
+    line.ratings.push(null);
+    line.index = line.moves.length;
+    legalCache.set(data.fen, data.legal);
+    render();
+    if (!how.dragged) glideMove(uci); // a dragged piece is already there
+    rateLineMove(line, line.index - 1, path);
+  } catch (err) {
+    render(); // put a dropped piece back
+    $("#caption").textContent = err.message;
+  }
+}
+
+// Stockfish's verdict on one move of the line: its icon on the board, and the evaluation.
+async function rateLineMove(which, i, path) {
+  try {
+    const res = await fetch("/api/rate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fen: state.result.start_fen, moves: path }),
+    });
+    const data = await res.json();
+    if (!res.ok || line !== which || which.moves[i] !== path[path.length - 1]) return;
+    which.ratings[i] = data;
+    render();
+  } catch (e) {
+    // no verdict for this move
+  }
+}
+
+function stepLine(delta) {
+  if (!line) return;
+  const before = line.index;
+  line.index = Math.max(0, Math.min(line.moves.length, line.index + delta));
+  picked = null;
+  render();
+  if (line.index === before + 1) glideMove(line.moves[line.index - 1]);
+}
+
+function exitLine() {
+  leaveLine();
+  render();
+}
+
+function leaveLine() {
+  line = null;
+  picked = null;
+  lineRequest++;
+}
+
+// Move label of ply `i` of the line, e.g. "9. Nf3" or "9... e5".
+function lineLabel(i) {
+  const [, side, , , , full] = line.startFen.split(" ");
+  const ply = i + (side === "b" ? 1 : 0);
+  const number = Number(full) + Math.floor(ply / 2);
+  return ply % 2 === 0 ? `${number}. ${line.sans[i]}` : `${number}... ${line.sans[i]}`;
+}
+
+function renderLine() {
+  const i = line.index;
+  const last = i ? line.moves[i - 1] : null;
+  const rating = i ? line.ratings[i - 1] : null;
+  renderBoard(lineFen(), last ? [last.slice(0, 2), last.slice(2, 4)] : null, [],
+    rating ? { square: last.slice(2, 4), classification: rating.classification } : null);
+  // The evaluation of the latest rated position in the line, or where the line started.
+  const rated = line.ratings.slice(0, i).reverse().find(Boolean);
+  renderEval(rated ? rated.eval_after : line.startEval);
+
+  let caption = `Your own line from ${line.from}. Move a piece to continue, or go back to the game.`;
+  if (i) {
+    const verdict = rating
+      ? `${ChessBoard.LABELS[rating.classification] || rating.classification}${BAD.includes(rating.classification) ? ` — the engine preferred ${rating.best_san}` : ""}.`
+      : "Checking it with Stockfish…";
+    caption = `${lineLabel(i - 1)}: ${verdict}${line.statuses[i - 1] ? ` ${line.statuses[i - 1]}.` : ""}`;
+  }
+  $("#caption").textContent = caption;
+
+  $("#line-moves").replaceChildren(...line.moves.map((_, k) => el("button", {
+    class: k === i - 1 ? "current" : "",
+    onclick: () => { line.index = k + 1; picked = null; render(); },
+  }, lineLabel(k), line.ratings[k] && NOTABLE.includes(line.ratings[k].classification) ? ChessBoard.icon(line.ratings[k].classification) : null)));
+  if (!line.moves.length) $("#line-moves").append(el("span", { class: "muted" }, "No moves yet"));
+  $("#line-back").disabled = i === 0;
+  $("#line-forward").disabled = i === line.moves.length;
+}
+
+const boardEl = $("#board");
+// Learn the legal moves as soon as the pointer is over the board; a tap that arrives first
+// selects its piece once they're known.
+boardEl.addEventListener("pointerenter", () => {
+  if (!$("#screen-walk").hidden && state.shownFen) fetchLegal(lineFen()).catch(() => {});
+});
+boardEl.addEventListener("pointerdown", (e) => {
+  const fen = lineFen();
+  if (e.button !== 0 || !fen || legalCache.has(fen)) return;
+  const sq = e.target.closest(".sq");
+  fetchLegal(fen).then(() => {
+    if (sq && lineFen() === fen && !picked && targetsFrom(sq.dataset.square).length) {
+      picked = sq.dataset.square;
+      render();
+    }
+  }).catch(() => {});
+});
+ChessBoard.attachInput(boardEl, {
+  canMove: () => !$("#screen-walk").hidden && legalCache.has(lineFen()),
+  targetsFrom,
+  fen: lineFen,
+  selected: () => picked,
+  select: (square) => {
+    picked = square;
+    render();
+  },
+  move: playLineMove,
+});
+
+$("#line-back").addEventListener("click", () => stepLine(-1));
+$("#line-forward").addEventListener("click", () => stepLine(1));
+
 // ---------- Board ----------
 
 function renderBoard(fen, highlight, arrows, icon = null) {
-  ChessBoard.render($("#board"), fen, { flipped: state.flipped, highlight: highlight || [], icon });
+  state.shownFen = fen;
+  ChessBoard.render($("#board"), fen, {
+    flipped: state.flipped,
+    highlight: highlight || [],
+    icon,
+    selected: picked,
+    targets: picked ? targetsFrom(picked) : [],
+  });
   renderPlayers(fen);
   ChessBoard.drawArrows($("#arrow-layer"), arrows || [], state.flipped);
+  prefetchLegal();
+}
+
+// Learn the shown position's legal moves shortly after it appears, so a piece can be dragged
+// straight away. Waits for a pause, so holding → doesn't fire a request per position.
+let prefetchTimer = 0;
+function prefetchLegal() {
+  clearTimeout(prefetchTimer);
+  if (legalCache.has(lineFen())) return;
+  prefetchTimer = setTimeout(() => {
+    if (!$("#screen-walk").hidden && lineFen()) fetchLegal(lineFen()).catch(() => {});
+  }, 250);
 }
 
 function renderEval(ev) {
+  state.shownEval = ev;
   const bar = $(".evalbar");
   bar.classList.toggle("flipped", state.flipped);
   bar.querySelector(".white-fill").style.height = ev.white_win + "%";
@@ -828,6 +1052,14 @@ $("#next").addEventListener("click", () => go(state.step + 1));
 document.addEventListener("keydown", (e) => {
   if ($("#screen-walk").hidden) return;
   if (e.target instanceof Element && e.target.matches("textarea, input, select")) return;
+  if (line) {
+    const lineKeys = { ArrowLeft: () => stepLine(-1), ArrowRight: () => stepLine(1), Escape: exitLine };
+    if (lineKeys[e.key]) {
+      e.preventDefault();
+      lineKeys[e.key]();
+      return;
+    }
+  }
   if (idea.index !== null) {
     const ideaKeys = {
       ArrowLeft: () => stepIdea(-1),

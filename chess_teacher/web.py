@@ -1,7 +1,8 @@
 """Local web app.
 
 /          a playable board, for two players or against Stockfish
-           (moves are checked by /api/play; the engine answers via /api/engine-move)
+           (moves are checked by /api/play; the engine answers via /api/engine-move;
+           /api/best is the "Best move" hint)
 /openings  opening trainer (/api/openings, /api/openings/turn)
 /analysis  paste a PGN; analysis runs in a background thread and the page polls for it
 /settings  theme, accent color, board colors and animation
@@ -24,7 +25,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import book, chesscom, openings, opponent
 from .positions import game_status, is_finished, replay, sans_of
-from .analysis import DEFAULT_DEPTH, analyze_pgn, rate_last_move, read_game
+from .analysis import DEFAULT_DEPTH, analyze_pgn, best_move, rate_last_move, read_game
 
 STATIC = Path(__file__).parent / "static"
 MAX_JOBS = 50
@@ -138,12 +139,22 @@ def job_status(job_id):
         return jsonify(dict(job))
 
 
+def start_fen(body) -> str | None:
+    """The optional starting position in a request (the analysis board explores from any position)."""
+    fen = body.get("fen")
+    if fen is None or fen == "":
+        return None
+    if not isinstance(fen, str) or len(fen) > 100:
+        raise ValueError("Bad position.")
+    return fen
+
+
 @app.post("/api/play")
 def play():
-    """Replay `moves` (UCI) from the start position; return the position and its legal moves."""
+    """Replay `moves` (UCI) from the start position (or `fen`); return the position and its legal moves."""
     body = request.get_json(silent=True) or {}
     try:
-        board = replay(body.get("moves"))
+        board = replay(body.get("moves"), start_fen(body))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     sans = sans_of(board)
@@ -205,13 +216,28 @@ def openings_turn():
 
 @app.post("/api/rate")
 def rate():
-    """Classify the last of `moves` (best, great, good, inaccuracy, mistake, blunder)."""
+    """Classify the last of `moves` (best, great, good, inaccuracy, mistake, blunder), played from the start or `fen`."""
     body = request.get_json(silent=True) or {}
     try:
-        board = replay(body.get("moves"))
+        board = replay(body.get("moves"), start_fen(body))
         if not board.move_stack:
             raise ValueError("No moves to rate.")
         return jsonify(rate_last_move(board))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.post("/api/best")
+def best():
+    """Stockfish's best move (full strength) after `moves`: the Play page's "Best move" hint."""
+    body = request.get_json(silent=True) or {}
+    try:
+        board = replay(body.get("moves"), start_fen(body))
+        if is_finished(board):
+            raise ValueError("The game is over.")
+        return jsonify(best_move(board))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except FileNotFoundError as exc:

@@ -239,6 +239,16 @@ def _positions(board: chess.Board):
         yield walk
 
 
+def best_move(board: chess.Board, depth: int = 16) -> Dict:
+    """Stockfish's best move at full strength in the position on `board`."""
+    if board.is_game_over():
+        raise ValueError("The game is over.")
+    with chess.engine.SimpleEngine.popen_uci(find_stockfish()) as engine:
+        info = engine.analyse(board, chess.engine.Limit(depth=depth))
+    move = info["pv"][0]
+    return {"uci": move.uci(), "san": board.san(move), "eval": score_json(info["score"])}
+
+
 def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
     """Classify the last move played on `board` (which must have a move stack)."""
     after = board.copy()
@@ -258,7 +268,14 @@ def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
     in_book = board.root() == chess.Board() and all(book.is_book(p) for p in _positions(board))
     if in_book and label not in EXPLAINED:
         label = "book"
-    return {"uci": move.uci(), "classification": label, "win_drop": round(drop, 1), "best_uci": best_move.uci()}
+    return {
+        "uci": move.uci(),
+        "classification": label,
+        "win_drop": round(drop, 1),
+        "best_uci": best_move.uci(),
+        "best_san": before.san(best_move),
+        "eval_after": score_json(score_after),
+    }
 
 
 def read_game(pgn_text: str) -> chess.pgn.Game:

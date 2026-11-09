@@ -109,6 +109,8 @@ const ChessBoard = (() => {
 
   // Squares whose piece is still gliding in, per board; render() keeps those pieces hidden.
   const gliding = new WeakMap();
+  // The square whose piece is being dragged, per board; render() keeps it faded.
+  const dragging = new WeakMap();
 
   // Options: flipped, highlight (squares tinted yellow), selected (square),
   // targets (squares to mark as legal destinations), icon ({ square, classification }),
@@ -118,6 +120,7 @@ const ChessBoard = (() => {
     const ep = selected ? enPassantAlias(fen, selected, targets) : null;
     if (ep) targets = [...targets, ep.alias]; // ring the pawn that en passant would take
     const busy = gliding.get(boardEl);
+    const held = dragging.get(boardEl);
     boardEl.replaceChildren();
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
@@ -136,6 +139,7 @@ const ChessBoard = (() => {
         if (piece) {
           const img = pieceImage(piece);
           if (busy && busy.has(name)) img.style.visibility = "hidden";
+          if (held === name) img.classList.add("lifted");
           sq.append(img);
         }
         if (mark && mark.square === name) {
@@ -242,8 +246,13 @@ const ChessBoard = (() => {
   //   select(square)       set the selection (null clears it) and re-render
   //   move(from, to, how)  the user made a move; how.dragged is true for drag-and-drop
   //   touched()            optional: called whenever the user presses on the board
+  //
+  // A dragged piece follows the pointer freely. It can only be put down on a legal square:
+  // the square under the pointer is ringed when it is one, and anywhere else the piece slides
+  // back. A legal drop shows the piece on its new square straight away, without waiting for
+  // the page (which usually checks the move with the server first).
   function attachInput(boardEl, hooks) {
-    let drag = null; // { from, ghost, size, moved, wasSelected }
+    let drag = null; // { from, x0, y0, dx, dy, size, scale, ghost, moved, wasSelected, over, frame, x, y }
 
     // Legal destinations, plus the en passant victim's square as a stand-in for the real one.
     function targets(square) {
@@ -257,19 +266,102 @@ const ChessBoard = (() => {
       hooks.move(from, ep && to === ep.alias ? ep.target : to, how);
     }
 
+    const squareEl = (name) => boardEl.querySelector(`[data-square="${name}"]`);
+
+    // The square under a point, worked out from the board's box (no hit-testing while dragging).
     function squareAt(x, y) {
-      const hit = document.elementFromPoint(x, y);
-      const sq = hit && hit.closest(".sq");
-      return sq && boardEl.contains(sq) ? sq.dataset.square : null;
+      const box = boardEl.getBoundingClientRect();
+      const col = Math.floor(((x - box.left) / box.width) * 8);
+      const row = Math.floor(((y - box.top) / box.height) * 8);
+      if (col < 0 || col > 7 || row < 0 || row > 7) return null;
+      const sq = boardEl.querySelectorAll(".sq")[row * 8 + col];
+      return sq ? sq.dataset.square : null;
     }
 
-    function moveGhost(x, y) {
-      drag.ghost.style.left = `${x - drag.size / 2}px`;
-      drag.ghost.style.top = `${y - drag.size / 2}px`;
+    function liftedImg() {
+      return boardEl.querySelector(`[data-square="${drag.from}"] .piece`);
+    }
+
+    function setOver(square) {
+      if (drag.over === square) return;
+      if (drag.over) { const old = squareEl(drag.over); if (old) old.classList.remove("drag-over"); }
+      drag.over = square;
+      const sq = square && squareEl(square);
+      if (sq) sq.classList.add("drag-over");
+    }
+
+    // Start showing the piece under the pointer (after it has moved a few pixels).
+    function lift() {
+      const img = liftedImg();
+      if (!img) return false;
+      const r = img.getBoundingClientRect();
+      drag.size = r.width;
+      const ghost = pieceImage(img.alt);
+      ghost.classList.add("ghost");
+      Object.assign(ghost.style, { width: `${r.width}px`, height: `${r.height}px`, left: "0px", top: "0px" });
+      document.body.append(ghost);
+      img.classList.add("lifted");
+      drag.ghost = ghost;
+      drag.moved = true;
+      dragging.set(boardEl, drag.from);
+      return true;
+    }
+
+    function place() {
+      drag.frame = 0;
+      if (!drag.ghost) return;
+      const half = drag.size / 2;
+      drag.ghost.style.transform = `translate3d(${drag.x - half}px, ${drag.y - half - drag.raise}px, 0) scale(${drag.scale})`;
+      const sq = squareAt(drag.x, drag.y);
+      setOver(sq && sq !== drag.from && targets(drag.from).includes(sq) ? sq : null);
+    }
+
+    // Show the piece on the square it was dropped on until the page re-renders.
+    function showDropped(from, to) {
+      const fromSq = squareEl(from);
+      const toSq = squareEl(to);
+      const img = fromSq && fromSq.querySelector(".piece");
+      if (!img || !toSq) return;
+      const ep = enPassantAlias(hooks.fen(), from, hooks.targetsFrom(from));
+      if (ep && (to === ep.alias || to === ep.target)) {
+        const victim = squareEl(ep.alias) && squareEl(ep.alias).querySelector(".piece");
+        if (victim) victim.remove();
+        to = ep.target;
+      }
+      const landing = squareEl(to);
+      const taken = landing.querySelector(".piece");
+      if (taken) taken.remove();
+      img.classList.remove("lifted");
+      landing.prepend(img);
+      // Castling: the rook hops over too.
+      if (img.alt.toLowerCase() === "k" && from[1] === to[1] && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) {
+        const [rookFrom, rookTo] = to[0] === "g" ? ["h" + to[1], "f" + to[1]] : ["a" + to[1], "d" + to[1]];
+        const rook = squareEl(rookFrom) && squareEl(rookFrom).querySelector(".piece");
+        if (rook && squareEl(rookTo)) squareEl(rookTo).prepend(rook);
+      }
+    }
+
+    // Slide the ghost back to its square after a drop that isn't a legal move.
+    function slideBack(ghost, from) {
+      const img = boardEl.querySelector(`[data-square="${from}"] .piece`);
+      const done = () => {
+        ghost.remove();
+        const back = boardEl.querySelector(`[data-square="${from}"] .piece`);
+        if (back) back.classList.remove("lifted");
+      };
+      const ms = 160 * (window.ChessSettings ? ChessSettings.motionScale() : 1);
+      if (!img || !ms || !ghost.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) return done();
+      const r = img.getBoundingClientRect();
+      const anim = ghost.animate(
+        [{ transform: ghost.style.transform }, { transform: `translate3d(${r.left}px, ${r.top}px, 0) scale(1)` }],
+        { duration: ms, easing: "ease-out", fill: "forwards" }
+      );
+      const timer = new Promise((res) => setTimeout(res, ms + 100));
+      Promise.race([anim.finished.catch(() => {}), timer]).then(done);
     }
 
     boardEl.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0) return; // only the main button moves pieces; pages may use right-click
+      if (e.button !== 0 || drag) return; // only the main button moves pieces; pages may use right-click
       const sq = e.target.closest(".sq");
       if (!sq || !hooks.canMove()) return;
       const square = sq.dataset.square;
@@ -285,45 +377,57 @@ const ChessBoard = (() => {
         return;
       }
 
-      // Pick up a piece that can move.
-      const wasSelected = selected === square;
+      // Pick up a piece that can move. It only leaves its square once the pointer moves.
+      const touch = e.pointerType === "touch";
+      drag = {
+        from: square, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+        threshold: touch ? 6 : 3,
+        scale: touch ? 1.3 : 1, // bigger under a finger, so you can still see it
+        raise: 0,
+        ghost: null, moved: false, wasSelected: selected === square, over: null, frame: 0,
+        pointerId: e.pointerId,
+      };
       hooks.select(square);
-      const img = boardEl.querySelector(`[data-square="${square}"] .piece`);
-      const size = img.getBoundingClientRect().width;
-      const ghost = pieceImage(pieceAt(hooks.fen(), square));
-      ghost.classList.add("ghost");
-      ghost.style.width = ghost.style.height = `${size}px`;
-      document.body.append(ghost);
-      img.classList.add("lifted");
-      drag = { from: square, ghost, size, moved: false, wasSelected };
-      moveGhost(e.clientX, e.clientY);
-      boardEl.setPointerCapture(e.pointerId);
+      try { boardEl.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ }
       e.preventDefault();
     });
 
     boardEl.addEventListener("pointermove", (e) => {
-      if (!drag) return;
-      drag.moved = true;
-      moveGhost(e.clientX, e.clientY);
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      if (!drag.ghost) {
+        if (Math.hypot(drag.x - drag.x0, drag.y - drag.y0) < drag.threshold) return;
+        if (!lift()) return;
+      }
+      e.preventDefault();
+      if (!drag.frame) drag.frame = requestAnimationFrame(place); // at most one update per frame
     });
 
     function endDrag(e, cancelled) {
-      if (!drag) return;
-      const { from, ghost, moved, wasSelected } = drag;
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      const { from, ghost, moved, wasSelected, frame } = drag;
+      if (frame) cancelAnimationFrame(frame);
+      setOver(null);
       drag = null;
-      ghost.remove();
+      dragging.delete(boardEl);
       const to = cancelled ? null : squareAt(e.clientX, e.clientY);
-      if (to && to !== from && targets(from).includes(to)) {
+      if (moved && to && to !== from && targets(from).includes(to)) {
+        ghost.remove();
+        showDropped(from, to);
         move(from, to, { dragged: true });
-      } else {
-        // A second click on a piece puts it down; otherwise it stays selected
-        // so a click on a target square finishes the move.
-        hooks.select(!moved && wasSelected ? null : from);
+        return;
       }
+      if (ghost) slideBack(ghost, from);
+      // A second click on a piece puts it down; otherwise it stays selected
+      // so a click on a target square finishes the move.
+      hooks.select(!moved && wasSelected ? null : from);
     }
 
     boardEl.addEventListener("pointerup", (e) => endDrag(e, false));
     boardEl.addEventListener("pointercancel", (e) => endDrag(e, true));
+    // Long presses mustn't open the image menu on phones.
+    boardEl.addEventListener("contextmenu", (e) => { if (e.pointerType !== "mouse" && drag) e.preventDefault(); });
   }
 
   // ---------- Captured material ----------

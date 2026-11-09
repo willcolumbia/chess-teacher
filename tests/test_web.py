@@ -61,3 +61,21 @@ def test_a_possible_repetition_does_not_end_the_game():
     assert data["game_over"]
     assert data["status"] == "Draw by repetition"
     assert "1/2-1/2" in data["pgn"]
+
+
+def test_play_from_a_position():
+    fen = "rn2kb1r/pp2pppp/1q6/3p4/8/2N4P/PPPP1P1P/R1BQK2R w KQkq - 0 8"
+    data = client.post("/api/play", json={"fen": fen, "moves": ["c3d5"]}).get_json()
+    assert data["sans"] == ["Nxd5"]
+    assert data["turn"] == "black"
+    assert "b6b2" in data["legal"]
+    assert client.post("/api/play", json={"fen": "not a position", "moves": []}).status_code == 400
+    assert client.post("/api/play", json={"fen": 42, "moves": []}).status_code == 400
+
+
+def test_best_move():
+    # Black can mate at once: 1. f3 e5 2. g4 ... Qh4#
+    data = client.post("/api/best", json={"moves": ["f2f3", "e7e5", "g2g4"]}).get_json()
+    assert data["uci"] == "d8h4"
+    assert data["san"] == "Qh4#"
+    assert client.post("/api/best", json={"moves": ["f2f3", "e7e5", "g2g4", "d8h4"]}).status_code == 400

@@ -23,9 +23,19 @@ def game_status(board: chess.Board) -> str:
     return f"{side} to move"
 
 
-def replay(moves) -> chess.Board:
-    """Play UCI `moves` from the start position. Raises ValueError on a bad or illegal move."""
+def replay(moves, fen=None) -> chess.Board:
+    """Play UCI `moves` from the start position, or from `fen` if given.
+
+    Raises ValueError on a bad position or a bad or illegal move.
+    """
     board = chess.Board()
+    if fen:
+        try:
+            board = chess.Board(fen)
+        except ValueError:
+            raise ValueError("Bad position.")
+        if not board.is_valid():
+            raise ValueError("Bad position.")
     for uci in moves or []:
         try:
             move = chess.Move.from_uci(uci)
