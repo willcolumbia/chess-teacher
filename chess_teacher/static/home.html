@@ -17,6 +17,8 @@
       <div class="links">
         <a href="/" class="active" aria-current="page">Play</a>
         <a href="/openings">Openings</a>
+        <a href="/puzzles">Puzzles</a>
+        <a href="/endgames">Endgames</a>
         <a href="/analysis">Analysis</a>
       </div>
       <a href="/settings" class="settings-link" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></a>
@@ -77,6 +79,22 @@
       <section class="card game-card" aria-label="This game">
         <div class="opening" id="opening"></div>
         <p id="moves" class="line"></p>
+      </section>
+
+      <section class="card coach-card" aria-label="Coach">
+        <div class="coach-head">
+          <h2>Coach</h2>
+          <label class="switch" title="Ring pieces that can be taken, and mark moves that give material away">
+            <input type="checkbox" id="aid-danger"><span>Danger check</span>
+          </label>
+        </div>
+        <div id="danger-notes" class="danger-notes" aria-live="polite"></div>
+        <div id="coach-note" class="coach-note" aria-live="polite"></div>
+        <p id="danger-legend" class="legend muted small" hidden>
+          <span class="key danger"></span>can be taken
+          <span class="key chance"></span>you can win it
+          <span class="key unsafe"></span>this move gives material away
+        </p>
       </section>
 
       <div class="actions">

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Puzzles · Chess Teacher</title>
+  <script src="/static/settings.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@600;700&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="site-nav">
+      <a class="brand" href="/"><span class="logo"><img src="/static/pieces/bN.svg" alt=""></span>Chess Teacher</a>
+      <div class="links">
+        <a href="/">Play</a>
+        <a href="/openings">Openings</a>
+        <a href="/puzzles" class="active" aria-current="page">Puzzles</a>
+        <a href="/endgames">Endgames</a>
+        <a href="/analysis">Analysis</a>
+      </div>
+      <a href="/settings" class="settings-link" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></a>
+    </nav>
+  </header>
+
+  <!-- Overview -->
+  <section id="screen-list" class="screen">
+    <div class="page-head">
+      <h1>Puzzles from your games</h1>
+      <p class="muted">Every mistake you made in an analyzed game becomes a puzzle: find the move you should have played. Puzzles you get right come back less and less often; the ones you miss come back soon.</p>
+    </div>
+    <div class="stat-tiles" id="puzzle-stats"></div>
+    <div class="row puzzle-start">
+      <button id="start" class="primary big">Start</button>
+      <a class="button-link" href="/analysis">Analyze another game for more puzzles</a>
+    </div>
+    <section class="card puzzle-list-card">
+      <h2>Your puzzles</h2>
+      <div id="puzzle-list" class="puzzle-list"></div>
+    </section>
+    <p class="muted small">Puzzles are saved in this browser only.</p>
+  </section>
+
+  <!-- Solving -->
+  <section id="screen-solve" class="screen" hidden>
+    <div class="walk">
+      <div class="board-col">
+        <div class="player" id="top-player"></div>
+        <div class="board-area">
+          <div id="board" class="board playable" aria-label="Chess board"></div>
+          <svg class="arrows" viewBox="0 0 8 8" aria-hidden="true">
+            <defs>
+              <marker id="head-best" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-best-head"/></marker>
+              <marker id="head-played" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-played-head"/></marker>
+              <marker id="head-user" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-user-head"/></marker>
+            </defs>
+            <g id="arrow-layer"></g>
+          </svg>
+          <div id="promotion" class="promotion" hidden></div>
+        </div>
+        <div class="player" id="bottom-player"></div>
+      </div>
+
+      <div class="card puzzle-card">
+        <div class="puzzle-top">
+          <span class="chip" id="puzzle-count"></span>
+          <button id="back-to-list" class="small-button">All puzzles</button>
+        </div>
+        <h1 id="puzzle-title"></h1>
+        <p id="puzzle-context" class="muted"></p>
+        <div id="puzzle-feedback" class="puzzle-feedback" aria-live="polite"></div>
+        <div id="puzzle-buttons" class="puzzle-buttons"></div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/static/board.js"></script>
+  <script src="/static/puzzle-store.js"></script>
+  <script src="/static/puzzles.js"></script>
+</body>
+</html>

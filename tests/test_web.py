@@ -79,3 +79,42 @@ def test_best_move():
     assert data["uci"] == "d8h4"
     assert data["san"] == "Qh4#"
     assert client.post("/api/best", json={"moves": ["f2f3", "e7e5", "g2g4", "d8h4"]}).status_code == 400
+
+
+def test_play_includes_the_danger_check():
+    data = play("e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "f3g5", "c6a5").get_json()
+    assert data["safety"]["danger"] == ["c4"]
+
+
+def test_rating_explains_a_bad_move():
+    data = client.post("/api/rate", json={"moves": "e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 f3g5 d7d6".split()}).get_json()
+    assert data["classification"] in ("mistake", "blunder")
+    assert data["san"] == "d6"
+    assert "Nxf7" in data["problem"]
+    assert data["best_description"]
+
+
+def test_new_pages_are_served():
+    for path in ("/puzzles", "/endgames"):
+        assert client.get(path).status_code == 200
+
+
+def test_endgame_api():
+    drills = client.get("/api/endgames").get_json()
+    assert len(drills) == 11
+    data = client.post("/api/endgames/turn", json={"drill": "rook", "start": 0, "moves": []}).get_json()
+    assert data["legal"] and data["eval"]["winning"]
+    assert client.post("/api/endgames/turn", json={"drill": "rook", "start": "x", "moves": []}).status_code == 400
+
+
+def test_openings_follow_a_practice_line():
+    data = client.post("/api/openings/turn", json={"opening": "italian", "moves": ["e2e4"], "line": ["e2e4", "c7c5"]}).get_json()
+    assert data["reply"]["uci"] == "c7c5"
+    assert client.post("/api/openings/turn", json={"opening": "italian", "moves": [], "line": "e2e4"}).status_code == 400
+
+
+def test_lists_carry_thumbnail_positions():
+    openings = {o["id"]: o for o in client.get("/api/openings").get_json()}
+    assert openings["italian"]["fen"].startswith("r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w")
+    drills = {d["id"]: d for d in client.get("/api/endgames").get_json()}
+    assert drills["pawn-draw"]["fen"].split()[1] == "b"

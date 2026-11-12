@@ -79,6 +79,9 @@ def list_openings() -> List[Dict]:
     for opening in OPENINGS:
         main = max(opening["lines"], key=lambda line: line.get("weight", 1))
         first = [san for san, _ in parse_line(main["moves"])][:6]
+        board = chess.Board()
+        for move in _ucis(first):
+            board.push(move)
         out.append(
             {
                 "id": opening["id"],
@@ -88,6 +91,7 @@ def list_openings() -> List[Dict]:
                 "length": opening["length"],
                 "first_moves": chess.Board().variation_san([m for m in _ucis(first)]),
                 "variations": [line["name"] for line in opening["lines"]],
+                "fen": board.fen(),
             }
         )
     return out
@@ -206,8 +210,20 @@ def feedback(tree: Node, moves: List[str], engine: Engine) -> Dict:
     return result
 
 
-def opponent_reply(tree: Node, moves: List[str], board: chess.Board, engine: Engine, rng: random.Random) -> Dict:
+def opponent_reply(
+    tree: Node, moves: List[str], board: chess.Board, engine: Engine, rng: random.Random,
+    forced: Optional[chess.Move] = None,
+) -> Dict:
     node = walk(tree, moves)
+    if forced is not None:  # steering the game into a line you want to practice
+        child = node.children.get(forced.uci()) if node else None
+        return {
+            "uci": forced.uci(),
+            "san": board.san(forced),
+            "note": (child.idea if child else None) or describe_move(board, forced),
+            "source": "book" if child else "engine",
+            "variation": variation_name(child) if child else None,
+        }
     if node and node.children:
         ucis = list(node.children)
         uci = rng.choices(ucis, weights=[node.children[u].weight for u in ucis])[0]
@@ -227,11 +243,25 @@ def opponent_reply(tree: Node, moves: List[str], board: chess.Board, engine: Eng
     return {"uci": move.uci(), "san": board.san(move), "note": describe_move(board, move), "source": "engine", "variation": None}
 
 
-def turn(opening_id: str, moves: List[str], rng: Optional[random.Random] = None) -> Dict:
+def steer(line: Optional[List[str]], moves: List[str], board: chess.Board) -> Optional[chess.Move]:
+    """The opponent's next move in `line`, while the game is still following it."""
+    if not line or len(line) <= len(moves) or list(line[: len(moves)]) != list(moves):
+        return None
+    try:
+        move = chess.Move.from_uci(str(line[len(moves)]))
+    except ValueError:
+        return None
+    return move if move in board.legal_moves else None
+
+
+def turn(
+    opening_id: str, moves: List[str], rng: Optional[random.Random] = None, line: Optional[List[str]] = None
+) -> Dict:
     """One trainer step. `moves` ends with the trainee's move (or is empty at the start).
 
     Returns feedback on that move, the opponent's reply (already played), and the
-    trainee's next recommended move, unless the drill is over.
+    trainee's next recommended move, unless the drill is over. With `line`, the opponent
+    follows it for as long as you do (to practice one position you got wrong before).
     """
     if opening_id not in BY_ID:
         raise ValueError(f"Unknown opening {opening_id!r}.")
@@ -251,7 +281,7 @@ def turn(opening_id: str, moves: List[str], rng: Optional[random.Random] = None)
         done = trainee_moves >= opening["length"] or board.is_game_over()
         result["fen_before_reply"] = board.fen()
         if not done and board.turn != trainee:
-            reply = opponent_reply(tree, moves, board, engine, rng)
+            reply = opponent_reply(tree, moves, board, engine, rng, steer(line, moves, board))
             result["reply"] = reply
             moves.append(reply["uci"])
             board.push(chess.Move.from_uci(reply["uci"]))

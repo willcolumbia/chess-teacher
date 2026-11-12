@@ -33,7 +33,65 @@ const state = {
   score: { firstTry: 0, total: 0, misses: [] },
   traineeMoves: 0,
   length: 10,
+  line: null, // practicing a weak spot: the moves that lead to it (the opponent follows them)
 };
+
+// ---------- Your record: where you go wrong (localStorage) ----------
+// openingStats[openingId] = { runs, completed, spots: { "e2e4,e7e5": { moves, sans, fen, expected, played, misses, streak, last } } }
+// A spot is a position where you played something other than the recommended move. Getting it
+// right twice in a row in Practice mode (without "Show the move") clears it.
+
+const FIXED_AFTER = 2;
+
+function allStats() {
+  try {
+    return JSON.parse(store("openingStats") || "{}") || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function statsFor(id) {
+  const all = allStats();
+  return all[id] || { runs: 0, completed: 0, spots: {} };
+}
+
+function updateStats(id, change) {
+  const all = allStats();
+  const st = all[id] || { runs: 0, completed: 0, spots: {} };
+  change(st);
+  all[id] = st;
+  store("openingStats", JSON.stringify(all));
+}
+
+// Your move at ply `index` of `moves`: right or wrong, and whether it counts toward clearing a spot.
+function recordMove(moves, sans, index, fb, counts, fen) {
+  const prefix = moves.slice(0, index);
+  const key = prefix.join(",");
+  updateStats(state.opening.id, (st) => {
+    const spot = st.spots[key];
+    if (!fb.correct) {
+      st.spots[key] = {
+        moves: prefix,
+        sans: sans.slice(0, index),
+        fen: fen || (spot && spot.fen) || null,
+        expected: fb.expected.san,
+        played: fb.played.san,
+        misses: (spot ? spot.misses : 0) + 1,
+        streak: 0,
+        last: Date.now(),
+      };
+    } else if (spot && counts) {
+      spot.streak += 1;
+      if (spot.streak >= FIXED_AFTER) delete st.spots[key];
+    }
+  });
+}
+
+// "1. e4 e5 2. Nf3" for a list of SANs from the start.
+function movesText(sans) {
+  return sans.map((s, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${s}` : s)).join(" ");
+}
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -55,6 +113,13 @@ function store(key, value) {
   } catch (e) {
     return null;
   }
+}
+
+// Back to the list of openings, with your updated record.
+function backToPick() {
+  state.line = null;
+  renderPick();
+  show("pick");
 }
 
 function show(screen) {
@@ -82,23 +147,100 @@ function label(sans, i) {
 
 // ---------- Pick screen ----------
 
-const learning = () => state.mode === "learn";
+const learning = () => state.mode === "learn" && !state.line; // a weak spot is always practiced
 const startHint = () => (learning() ? 2 : 0); // Learn mode shows each move up front
 
 function renderPick() {
   for (const b of document.querySelectorAll("[data-side]")) b.classList.toggle("active", b.dataset.side === state.side);
   for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);
-  const list = $("#opening-list");
-  list.replaceChildren(
-    ...state.openings
-      .filter((o) => o.color === state.side)
-      .map((o) =>
-        el("button", { class: "opening-card", onclick: () => start(o) },
+  const flipped = state.side === "black";
+  const mine = state.openings.filter((o) => o.color === state.side);
+  $("#list-title").textContent = flipped ? "Defenses for Black" : "Openings for White";
+  $("#opening-list").replaceChildren(
+    ...mine.map((o) => {
+      const st = statsFor(o.id);
+      const spots = Object.keys(st.spots).length;
+      const record = st.runs
+        ? `Practiced ${st.runs}×${spots ? ` · ${spots} weak spot${spots === 1 ? "" : "s"}` : " · no weak spots"}`
+        : "Not practiced yet";
+      return el("button", { class: "opening-card", onclick: () => start(o) },
+        o.fen ? ChessBoard.mini(o.fen, { flipped }) : null,
+        el("span", { class: "opening-text" },
           el("strong", {}, o.name),
           el("span", { class: "line" }, o.first_moves),
           el("span", { class: "summary" }, o.summary),
-          el("span", { class: "muted small" }, `${o.variations.length} variations · about ${o.length} moves`)))
+          el("span", { class: `record ${spots ? "weak" : st.runs ? "clean" : ""}` }, record)));
+    })
   );
+  renderWeakSpots(mine);
+}
+
+// "4. c3 Nf6 5. ?": the last few moves before a weak spot, and whose turn it is.
+function spotLead(sans) {
+  const from = Math.max(0, sans.length - 4);
+  const parts = [];
+  for (let i = from; i <= sans.length; i++) {
+    const n = Math.floor(i / 2) + 1;
+    const text = i < sans.length ? sans[i] : "?";
+    if (i % 2 === 0) parts.push(`${n}. ${text}`);
+    else parts.push(i === from ? `${n}... ${text}` : text);
+  }
+  return parts.join(" ");
+}
+
+// "5. d4" / "4...Nc6": the move you played at ply `ply`.
+function plyLabel(ply, san) {
+  const n = Math.floor(ply / 2) + 1;
+  return ply % 2 === 0 ? `${n}. ${san}` : `${n}...${san}`;
+}
+
+// Spots saved before boards were shown have no position: ask the server once and keep it.
+async function fillSpotBoard(opening, key, spot, holder, flipped) {
+  try {
+    const data = await post("/api/play", { moves: spot.moves });
+    updateStats(opening.id, (st) => { if (st.spots[key]) st.spots[key].fen = data.fen; });
+    holder.replaceChildren(spotBoard(data.fen, spot, flipped));
+  } catch (e) {
+    // no picture, that's all
+  }
+}
+
+function spotBoard(fen, spot, flipped) {
+  const last = spot.moves[spot.moves.length - 1];
+  return ChessBoard.mini(fen, { flipped, highlight: last ? [last.slice(0, 2), last.slice(2, 4)] : [] });
+}
+
+// The positions you've got wrong most often (for the side you picked), worst first.
+function renderWeakSpots(openings) {
+  const box = $("#weak-spots");
+  const spots = [];
+  for (const o of openings) {
+    for (const [key, spot] of Object.entries(statsFor(o.id).spots)) spots.push({ opening: o, key, spot });
+  }
+  spots.sort((a, b) => b.spot.misses - a.spot.misses || b.spot.last - a.spot.last);
+  box.hidden = !spots.length;
+  if (!spots.length) return box.replaceChildren();
+  const flipped = state.side === "black";
+  box.replaceChildren(
+    el("div", { class: "weak-head" },
+      el("h2", {}, "Your weak spots"),
+      el("span", { class: "muted small" }, "Get one right twice in a row and it's cleared")),
+    el("div", { class: "weak-list" },
+      ...spots.slice(0, 6).map(({ opening, key, spot }) => {
+        const holder = el("span", { class: "weak-board" });
+        if (spot.fen) holder.append(spotBoard(spot.fen, spot, flipped));
+        else fillSpotBoard(opening, key, spot, holder, flipped);
+        const sans = spot.sans || [];
+        return el("div", { class: "weak-spot" },
+          holder,
+          el("span", { class: "weak-text" },
+            el("span", { class: "weak-top" },
+              el("strong", {}, opening.name),
+              el("span", { class: "chip" }, `Missed ${spot.misses}×`)),
+            el("span", { class: "line" }, spot.moves.length ? spotLead(sans) : "Your first move"),
+            el("span", { class: "weak-detail" }, "You played ", el("strong", {}, plyLabel(spot.moves.length, spot.played)), ". Find the book move."),
+            el("button", { class: "small-button", onclick: () => start(opening, spot.moves) }, "Practice this spot")));
+      })));
 }
 
 document.querySelectorAll("[data-mode]").forEach((b) =>
@@ -133,9 +275,10 @@ async function loadOpenings() {
 
 // ---------- Drill ----------
 
-async function start(opening) {
+async function start(opening, line = null) {
   Object.assign(state, {
     opening,
+    line,
     moves: [],
     sans: [],
     fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -157,11 +300,12 @@ async function start(opening) {
     length: opening.length,
   });
   $("#drill-title").textContent = `${opening.name} · you play ${opening.color === "white" ? "White" : "Black"}`;
-  addLog({ kind: "info", text: opening.summary });
+  addLog({ kind: "info", text: line ? "Practicing a weak spot: your opponent heads for the position you got wrong before. Find the move yourself." : opening.summary });
+  updateStats(opening.id, (st) => { st.runs += 1; });
   show("drill");
   render();
   try {
-    const data = await post("/api/openings/turn", { opening: opening.id, moves: [] });
+    const data = await post("/api/openings/turn", { opening: opening.id, moves: [], line });
     await apply(data, null);
   } catch (err) {
     showError(err.message);
@@ -183,6 +327,7 @@ async function apply(data, fenBefore) {
     const playedIndex = data.sans.length - (data.reply ? 2 : 1);
     if (fb.correct && (learning() || state.hint < 2)) state.score.firstTry += 1;
     if (!fb.correct) state.score.misses.push({ played: label(data.sans, playedIndex), expected: fb.expected.san });
+    recordMove(data.moves, data.sans, playedIndex, fb, !learning() && state.hint < 2, fenBefore);
     addLog(feedbackEntry(fb, label(data.sans, playedIndex), fenBefore));
     state.mark = { square: fb.played.uci.slice(2, 4), classification: fb.classification };
   }
@@ -235,7 +380,10 @@ async function apply(data, fenBefore) {
         : "That's the end of the book line. From here Stockfish recommends your moves and picks your opponent's replies.",
     });
   }
-  if (state.done) addLog({ kind: "recap" });
+  if (state.done) {
+    addLog({ kind: "recap" });
+    updateStats(state.opening.id, (st) => { st.completed += 1; });
+  }
 }
 
 function feedbackEntry(fb, playedLabel, fenBefore) {
@@ -369,7 +517,7 @@ function recapEntry() {
     ...misses.map((m) => el("p", {}, `${m.played} — the recommended move was ${m.expected}.`)),
     el("div", { class: "row" },
       el("button", { class: "primary", onclick: () => start(state.opening) }, "Practice again"),
-      el("button", { onclick: () => show("pick") }, "Another opening"),
+      el("button", { onclick: backToPick }, "Another opening"),
       el("button", { onclick: continuePlaying }, "Continue playing vs Stockfish")));
 }
 
@@ -386,6 +534,8 @@ function renderPrompt() {
     return;
   }
   const nodes = [el("p", {}, el("strong", {}, "Your move."), state.expected.source === "book" ? " Play the book move." : " Play Stockfish's recommended move.")];
+  const spot = statsFor(state.opening.id).spots[state.moves.join(",")];
+  if (spot) nodes.push(el("p", { class: "weak-note" }, `You've missed this one ${spot.misses}× before (you played ${spot.played}).`));
   if (state.hint >= 1) nodes.push(el("p", { class: "hint" }, `Hint: ${state.expected.idea}`));
   if (state.hint >= 2) nodes.push(el("p", { class: "hint" }, `The move is ${state.expected.san} (yellow arrow).`));
   nodes.push(el("div", { class: "row" },
@@ -424,7 +574,7 @@ async function onMove(from, to, how = {}) {
     drawn.clear(); // your arrows and marks go away once you move, as on the Play page
     render();
     if (!how.dragged) ChessBoard.glide(boardEl, uci, GLIDE_MS.click); // a dragged piece is already there
-    const data = await post("/api/openings/turn", { opening: state.opening.id, moves: [...state.moves, uci] });
+    const data = await post("/api/openings/turn", { opening: state.opening.id, moves: [...state.moves, uci], line: state.line });
     state.hint = hintLevel;
     await apply(data, fenBefore);
   } catch (err) {
@@ -482,7 +632,7 @@ function continuePlaying() {
 }
 
 $("#restart").addEventListener("click", () => state.opening && start(state.opening));
-$("#choose").addEventListener("click", () => show("pick"));
+$("#choose").addEventListener("click", backToPick);
 $("#flip").addEventListener("click", () => {
   state.flipped = !state.flipped;
   render();

@@ -114,8 +114,10 @@ const ChessBoard = (() => {
 
   // Options: flipped, highlight (squares tinted yellow), selected (square),
   // targets (squares to mark as legal destinations), icon ({ square, classification }),
-  // premove (squares tinted red for a queued premove), marked (squares you tinted red with a right-click).
-  function render(boardEl, fen, { flipped = false, highlight = [], selected = null, targets = [], icon: mark = null, premove = [], marked = [] } = {}) {
+  // premove (squares tinted red for a queued premove), marked (squares you tinted red with a right-click),
+  // danger (your pieces that can be taken: red ring), chances (pieces you can win: blue ring),
+  // unsafe (target squares where the move would give material away: red dot).
+  function render(boardEl, fen, { flipped = false, highlight = [], selected = null, targets = [], icon: mark = null, premove = [], marked = [], danger = [], chances = [], unsafe = [] } = {}) {
     const grid = parseFen(fen);
     const ep = selected ? enPassantAlias(fen, selected, targets) : null;
     if (ep) targets = [...targets, ep.alias]; // ring the pawn that en passant would take
@@ -134,6 +136,9 @@ const ChessBoard = (() => {
         if (marked.includes(name)) classes.push("marked");
         if (name === selected) classes.push("selected");
         if (targets.includes(name)) classes.push(piece ? "target capture" : "target");
+        if (unsafe.includes(name)) classes.push("unsafe");
+        if (danger.includes(name)) classes.push("danger");
+        if (chances.includes(name)) classes.push("chance");
         const sq = make("div", classes.join(" "));
         sq.dataset.square = name;
         if (piece) {
@@ -154,6 +159,32 @@ const ChessBoard = (() => {
         boardEl.append(sq);
       }
     }
+  }
+
+  // A small, static board for lists and cards: no coordinates, no input. `highlight` tints
+  // squares (e.g. the last move).
+  function mini(fen, { flipped = false, highlight = [] } = {}) {
+    const grid = parseFen(fen);
+    const box = make("div", "mini-board");
+    box.setAttribute("aria-hidden", "true");
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const rank = flipped ? r : 7 - r;
+        const file = flipped ? 7 - c : c;
+        const name = String.fromCharCode(97 + file) + (rank + 1);
+        const sq = make("span", `msq ${(rank + file) % 2 ? "light" : "dark"}${highlight.includes(name) ? " hl" : ""}`);
+        const piece = grid[7 - rank][file];
+        if (piece) {
+          const img = make("img");
+          img.src = `/static/pieces/${piece === piece.toUpperCase() ? "w" : "b"}${piece.toUpperCase()}.svg`;
+          img.alt = "";
+          img.draggable = false;
+          sq.append(img);
+        }
+        box.append(sq);
+      }
+    }
+    return box;
   }
 
   // Slide the piece that just landed on `uci`'s target square in from where it started
@@ -565,5 +596,5 @@ const ChessBoard = (() => {
     return box;
   }
 
-  return { render, glide, drawArrows, pieceAt, pieceImage, attachInput, attachDrawing, reach, icon, LABELS, captured, capturedRow };
+  return { render, mini, glide, drawArrows, pieceAt, pieceImage, attachInput, attachDrawing, reach, icon, LABELS, captured, capturedRow };
 })();

@@ -5,6 +5,8 @@
            /api/best is the "Best move" hint)
 /openings  opening trainer (/api/openings, /api/openings/turn)
 /analysis  paste a PGN; analysis runs in a background thread and the page polls for it
+/puzzles   puzzles made from your own mistakes (kept in the browser; Analysis adds them)
+/endgames  endgame drills against Stockfish (/api/endgames, /api/endgames/turn)
 /settings  theme, accent color, board colors and animation
 """
 from __future__ import annotations
@@ -23,7 +25,7 @@ import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import book, chesscom, openings, opponent
+from . import book, chesscom, endgames, openings, opponent, safety
 from .positions import game_status, is_finished, replay, sans_of
 from .analysis import DEFAULT_DEPTH, analyze_pgn, best_move, rate_last_move, read_game
 
@@ -97,6 +99,16 @@ def openings_page():
 @app.get("/analysis")
 def analysis_page():
     return send_from_directory(STATIC, "analysis.html")
+
+
+@app.get("/puzzles")
+def puzzles_page():
+    return send_from_directory(STATIC, "puzzles.html")
+
+
+@app.get("/endgames")
+def endgames_page():
+    return send_from_directory(STATIC, "endgames.html")
 
 
 @app.get("/settings")
@@ -178,6 +190,7 @@ def play():
             "status": game_status(board),
             "game_over": over,
             "opening": book.opening_name(board),
+            "safety": safety.check(board),
             "pgn": str(game),
         }
     )
@@ -207,7 +220,10 @@ def openings_list():
 def openings_turn():
     body = request.get_json(silent=True) or {}
     try:
-        return jsonify(openings.turn(str(body.get("opening")), body.get("moves") or []))
+        line = body.get("line")
+        if line is not None and (not isinstance(line, list) or len(line) > 80 or not all(isinstance(u, str) for u in line)):
+            raise ValueError("Bad line.")
+        return jsonify(openings.turn(str(body.get("opening")), body.get("moves") or [], line=line))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except FileNotFoundError as exc:
@@ -238,6 +254,23 @@ def best():
         if is_finished(board):
             raise ValueError("The game is over.")
         return jsonify(best_move(board))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.get("/api/endgames")
+def endgames_list():
+    return jsonify(endgames.list_drills())
+
+
+@app.post("/api/endgames/turn")
+def endgames_turn():
+    """Your move in an endgame drill (the last of `moves`), Stockfish's reply and the verdict."""
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(endgames.turn(str(body.get("drill")), body.get("start"), body.get("moves") or []))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except FileNotFoundError as exc:

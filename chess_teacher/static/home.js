@@ -33,6 +33,9 @@ const state = {
   hint: null, // "Best move": { uci, san } for your current position, shown as a green arrow
   hintLoading: false,
   ratings: [], // classification of each move ("best", "mistake", ...), filled in as Stockfish rates them
+  notes: [], // the coach's note on each move (/api/rate's answer), filled in alongside ratings
+  safety: { danger: [], chances: [], unsafe: [] }, // danger check for the side to move (/api/play)
+  dangerCheck: false, // ring pieces that can be taken and mark moves that give material away
   opening: null, // { eco, name } of the most specific book opening reached, if any
 };
 let engineRequest = 0; // bumped to discard a reply that arrives after undo / new game
@@ -44,8 +47,8 @@ const GLIDE_MS = { engine: 330, click: 200, premove: 160 }; // how long a piece 
 
 function saveSettings() {
   try {
-    const { mode, elo, colorChoice, myColor } = state;
-    localStorage.setItem("homeSettings", JSON.stringify({ mode, elo, colorChoice, myColor }));
+    const { mode, elo, colorChoice, myColor, dangerCheck } = state;
+    localStorage.setItem("homeSettings", JSON.stringify({ mode, elo, colorChoice, myColor, dangerCheck }));
   } catch (e) {
     // settings just won't be remembered
   }
@@ -58,6 +61,7 @@ function loadSettings() {
     if (Number.isFinite(saved.elo)) state.elo = Math.max(400, Math.min(3000, saved.elo));
     if (["white", "black", "random"].includes(saved.colorChoice)) state.colorChoice = saved.colorChoice;
     if (["white", "black"].includes(saved.myColor)) state.myColor = saved.myColor;
+    if (typeof saved.dangerCheck === "boolean") state.dangerCheck = saved.dangerCheck;
   } catch (e) {
     // use the defaults
   }
@@ -89,6 +93,7 @@ async function rateLastMove() {
     // Still the same game (no undo / new game since)?
     if (state.moves.length > index && state.moves[index] === moves[index] && state.moves.slice(0, index).join() === moves.slice(0, index).join()) {
       state.ratings[index] = data.classification;
+      state.notes[index] = data;
       render();
     }
   } catch (e) {
@@ -116,6 +121,7 @@ async function load(moves, { glide = 0 } = {}) {
     turn: data.turn,
     gameOver: data.game_over,
     opening: data.opening,
+    safety: data.safety || { danger: [], chances: [], unsafe: [] },
   });
   state.selected = null;
   drawn.clear(); // drawn arrows and marks go away once a move is played
@@ -123,6 +129,7 @@ async function load(moves, { glide = 0 } = {}) {
   state.hintLoading = false;
   hintRequest++;
   state.ratings = state.ratings.slice(0, moves.length);
+  state.notes = state.notes.slice(0, moves.length);
   if (added && state.continued) state.eloLocked = true;
   if (state.waiting && !enginesTurn()) state.waiting = false;
   render();
@@ -225,17 +232,23 @@ function render() {
   const last = state.moves[state.moves.length - 1];
   const rating = state.ratings[state.moves.length - 1];
   const targets = enginesTurn() ? premoveTargets : targetsFrom;
+  const aid = dangerShown();
+  const shownTargets = state.selected ? targets(state.selected) : [];
   ChessBoard.render(boardEl, state.fen, {
     flipped: state.flipped,
     highlight: last ? [last.slice(0, 2), last.slice(2, 4)] : [],
     selected: state.selected,
-    targets: state.selected ? targets(state.selected) : [],
+    targets: shownTargets,
+    danger: aid ? state.safety.danger : [],
+    chances: aid ? state.safety.chances : [],
+    unsafe: aid && state.selected ? shownTargets.filter((to) => state.safety.unsafe.some((u) => u.startsWith(state.selected + to))) : [],
     icon: last && rating ? { square: last.slice(2, 4), classification: rating } : null,
     premove: state.premove ? [state.premove.from, state.premove.to] : [],
     marked: drawn.marks,
   });
   drawUserArrows();
   renderHintButton();
+  renderCoach();
   $("#status").textContent = statusText();
   $("#undo").disabled = state.moves.length === 0;
   for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === state.mode);
@@ -408,6 +421,86 @@ function renderHintButton() {
   button.textContent = state.hintLoading ? "Thinking…" : state.hint ? "Hide best move" : "Best move";
 }
 
+// ---------- Coach: danger check and a note on your last move ----------
+
+const PIECE_NAMES = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
+const BAD_MOVES = ["inaccuracy", "mistake", "miss", "blunder"];
+
+// The danger check is about the position you have to move in: always in a two-player game,
+// only on your turn against Stockfish.
+const dangerShown = () => state.dangerCheck && !state.gameOver && canMove() && !state.waiting;
+
+function pieceName(square) {
+  const piece = ChessBoard.pieceAt(state.fen, square);
+  return piece ? `${PIECE_NAMES[piece.toLowerCase()]} on ${square}` : square;
+}
+
+function listOf(items) {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+// The latest move the coach talks about: yours against Stockfish, anyone's in a two-player game.
+function coachedMove() {
+  for (let i = state.moves.length - 1; i >= 0; i--) {
+    if (!vsEngine() || (state.myColor === "white") === (i % 2 === 0)) return i;
+  }
+  return -1;
+}
+
+function textP(className, text) {
+  const p = document.createElement("p");
+  if (className) p.className = className;
+  p.textContent = text;
+  return p;
+}
+
+function renderCoach() {
+  const lines = [];
+  if (dangerShown()) {
+    const { danger, chances } = state.safety;
+    if (danger.length) lines.push(textP("danger-line danger", `Your ${listOf(danger.map(pieceName))} can be taken.`));
+    if (chances.length) lines.push(textP("danger-line chance", `You can win the ${listOf(chances.map(pieceName))}.`));
+    if (!lines.length) lines.push(textP("danger-line calm", "Nothing is hanging. Before you move, check what your move leaves undefended."));
+  }
+  $("#danger-notes").replaceChildren(...lines);
+  $("#aid-danger").checked = state.dangerCheck;
+  $("#danger-legend").hidden = !state.dangerCheck;
+
+  const box = $("#coach-note");
+  const i = coachedMove();
+  const note = i >= 0 ? state.notes[i] : null;
+  if (i < 0) return box.replaceChildren(textP("muted small", "Make a move and the coach will tell you what it does."));
+  if (!note) return box.replaceChildren(textP("muted small", "Checking the move…"));
+
+  const head = document.createElement("div");
+  head.className = "coach-note-head";
+  const san = document.createElement("strong");
+  san.textContent = `${Math.floor(i / 2) + 1}.${i % 2 ? ".." : ""} ${note.san || state.sans[i]}`;
+  const label = document.createElement("span");
+  label.className = `with-icon class-label t-${note.classification}`;
+  const icon = ChessBoard.icon(note.classification);
+  if (icon) label.append(icon);
+  label.append(ChessBoard.LABELS[note.classification] || note.classification);
+  head.append(san, label);
+  const nodes = [head];
+  if (BAD_MOVES.includes(note.classification)) {
+    if (note.problem) nodes.push(textP("", note.problem));
+    nodes.push(textP("better", `Better was ${note.best_san}. ${note.best_description || ""}`.trim()));
+    // Undo takes back your move (and Stockfish's reply to it), so only offer it for the latest one.
+    const latest = i === state.moves.length - 1 || (vsEngine() && i === state.moves.length - 2);
+    if (latest && !state.gameOver) {
+      const button = document.createElement("button");
+      button.className = "small-button";
+      button.textContent = "Take it back and try again";
+      button.addEventListener("click", undo);
+      nodes.push(button);
+    }
+  } else if (note.description) {
+    nodes.push(textP("", note.description));
+  }
+  box.replaceChildren(...nodes);
+}
+
 // ---------- Buttons ----------
 
 function undo() {
@@ -429,6 +522,7 @@ function newGame() {
   state.thinking = false;
   state.premove = null;
   state.ratings = [];
+  state.notes = [];
   Object.assign(state, { continued: false, eloLocked: false, waiting: false });
   if (vsEngine()) {
     state.myColor = state.colorChoice === "random" ? (Math.random() < 0.5 ? "white" : "black") : state.colorChoice;
@@ -452,6 +546,7 @@ function continueGame({ moves, color }) {
     thinking: false,
     premove: null,
     ratings: [],
+    notes: [],
     continued: true,
     eloLocked: false,
     waiting: true, // cleared by load() if it's your move
@@ -482,6 +577,11 @@ function confirmRestart() {
 }
 
 $("#undo").addEventListener("click", undo);
+$("#aid-danger").addEventListener("change", (e) => {
+  state.dangerCheck = e.target.checked;
+  saveSettings();
+  render();
+});
 $("#best-move").addEventListener("click", toggleHint);
 $("#start-engine").addEventListener("click", () => {
   state.waiting = false;

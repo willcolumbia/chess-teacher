@@ -268,13 +268,32 @@ def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
     in_book = board.root() == chess.Board() and all(book.is_book(p) for p in _positions(board))
     if in_book and label not in EXPLAINED:
         label = "book"
+    # Coach notes: what the move does and, for a bad one, what went wrong and what was better.
+    problem = None
+    if label in EXPLAINED:
+        problem = get_explainer().explain(
+            MoveContext(
+                board=before.copy(stack=False),
+                move=move,
+                best_move=best_move,
+                best_line=best_line,
+                reply_line=reply_line,
+                score_before=rel_before,
+                score_after=rel_after,
+                classification=label,
+            )
+        ).summary
     return {
         "uci": move.uci(),
+        "san": before.san(move),
         "classification": label,
         "win_drop": round(drop, 1),
         "best_uci": best_move.uci(),
         "best_san": before.san(best_move),
         "eval_after": score_json(score_after),
+        "description": describe_move(before, move),
+        "problem": problem,
+        "best_description": describe_move(before, best_move) if best_move != move else None,
     }
 
 
