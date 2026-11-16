@@ -1,4 +1,6 @@
-from chess_teacher.web import app
+import re
+
+from chess_teacher.web import app, asset_version
 
 client = app.test_client()
 
@@ -91,12 +93,33 @@ def test_rating_explains_a_bad_move():
     assert data["classification"] in ("mistake", "blunder")
     assert data["san"] == "d6"
     assert "Nxf7" in data["problem"]
+    assert data["problem_theme"] == "fork"
     assert data["best_description"]
 
 
 def test_new_pages_are_served():
-    for path in ("/puzzles", "/endgames"):
+    for path in ("/puzzles", "/puzzles/mine", "/endgames"):
         assert client.get(path).status_code == 200
+
+
+def test_pages_stamp_their_static_links():
+    # A changed script or stylesheet gets a new link, so no browser keeps running the old one.
+    html = client.get("/puzzles").get_data(as_text=True)
+    stamp = re.search(r'src="/static/puzzles\.js\?v=([0-9a-f]{8})"', html)
+    assert stamp and re.search(r'href="/static/style\.css\?v=[0-9a-f]{8}"', html)
+    assert stamp.group(1) == asset_version("puzzles.js") != asset_version("my-puzzles.js")
+    assert "fonts.googleapis.com/css2?family" in html  # other links are left alone
+    assert client.get(f"/static/puzzles.js?v={stamp.group(1)}").status_code == 200
+    assert client.get("/puzzles").headers["Cache-Control"] == "no-cache"
+
+
+def test_puzzle_api():
+    skills = client.get("/api/puzzles").get_json()
+    assert len(skills) == 14 and skills[0]["id"] == "mate-in-1" and len(skills[0]["puzzles"]) == 20
+    skill = client.get("/api/puzzles/mate-in-1").get_json()
+    first = skill["puzzles"][0]
+    assert first["id"] == skills[0]["puzzles"][0] and first["steps"][0]["uci"] in first["steps"][0]["legal"]
+    assert client.get("/api/puzzles/nope").status_code == 404
 
 
 def test_endgame_api():

@@ -25,22 +25,24 @@
     </nav>
   </header>
 
-  <!-- Overview -->
+  <!-- Pick a skill -->
   <section id="screen-list" class="screen">
-    <div class="page-head">
-      <h1>Puzzles from your games</h1>
-      <p class="muted">Every mistake you made in an analyzed game becomes a puzzle: find the move you should have played. Puzzles you get right come back less and less often; the ones you miss come back soon.</p>
+    <div class="pick-head">
+      <div>
+        <h1>Puzzles</h1>
+        <p class="muted">Short tactics from real games, sorted by the skill they train. Every set starts easy and gets harder.</p>
+      </div>
+      <div class="pick-controls">
+        <div id="puzzle-stats" class="drill-stats"></div>
+      </div>
     </div>
-    <div class="stat-tiles" id="puzzle-stats"></div>
-    <div class="row puzzle-start">
-      <button id="start" class="primary big">Start</button>
-      <a class="button-link" href="/analysis">Analyze another game for more puzzles</a>
-    </div>
-    <section class="card puzzle-list-card">
-      <h2>Your puzzles</h2>
-      <div id="puzzle-list" class="puzzle-list"></div>
+    <div id="skill-list" class="drill-groups"></div>
+    <p id="list-error" class="error" hidden></p>
+    <section class="drill-group mine-group">
+      <h2>From your games</h2>
+      <a id="mine-card" class="mine-card" href="/puzzles/mine"></a>
     </section>
-    <p class="muted small">Puzzles are saved in this browser only.</p>
+    <p class="muted small puzzle-source">The skill puzzles come from the Lichess puzzle database (public domain). Your progress is saved in this browser only.</p>
   </section>
 
   <!-- Solving -->
@@ -53,25 +55,26 @@
           <svg class="arrows" viewBox="0 0 8 8" aria-hidden="true">
             <defs>
               <marker id="head-best" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-best-head"/></marker>
-              <marker id="head-played" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-played-head"/></marker>
               <marker id="head-user" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="arrow-user-head"/></marker>
             </defs>
             <g id="arrow-layer"></g>
           </svg>
-          <div id="promotion" class="promotion" hidden></div>
         </div>
         <div class="player" id="bottom-player"></div>
       </div>
 
       <div class="card puzzle-card">
         <div class="puzzle-top">
-          <span class="chip" id="puzzle-count"></span>
-          <button id="back-to-list" class="small-button">All puzzles</button>
+          <span class="puzzle-chips"><span class="chip" id="puzzle-count"></span><span class="chip" id="puzzle-level"></span></span>
+          <button id="back-to-list" class="small-button">All skills</button>
         </div>
         <h1 id="puzzle-title"></h1>
         <p id="puzzle-context" class="muted"></p>
         <div id="puzzle-feedback" class="puzzle-feedback" aria-live="polite"></div>
         <div id="puzzle-buttons" class="puzzle-buttons"></div>
+        <div id="puzzle-dots" class="puzzle-dots" role="group" aria-label="Puzzles in this set"></div>
+        <ul id="puzzle-tips" class="tips"></ul>
+        <p id="solve-error" class="error" hidden></p>
       </div>
     </div>
   </section>

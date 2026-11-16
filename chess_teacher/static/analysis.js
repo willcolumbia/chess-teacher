@@ -284,11 +284,11 @@ function start(color) {
   $("#game-sub").replaceChildren(...[timeControl(h.TimeControl), opening, result, h.Date]
     .filter((x) => x && x !== "?" && !x.startsWith("????"))
     .map((x) => el("span", { class: "chip" }, x)));
-  // Your mistakes become puzzles on the Puzzles page.
+  // Your mistakes become puzzles under "From your games" on the Puzzles page.
   const added = PuzzleStore.addFromAnalysis(state.result, color);
   const mine = PuzzleStore.all().filter((p) => p.color === color && moves().some((m) => p.id.endsWith(`#${m.ply}`) && p.fen === m.fen_before)).length;
   if (mine) {
-    $("#game-sub").append(el("a", { class: "chip puzzle-chip", href: "/puzzles#start", title: "Practice the positions where you went wrong" },
+    $("#game-sub").append(el("a", { class: "chip puzzle-chip", href: "/puzzles/mine#start", title: "Practice the positions where you went wrong" },
       added ? `${added} new puzzle${added === 1 ? "" : "s"} from your mistakes ▶` : `${mine} puzzle${mine === 1 ? "" : "s"} from this game ▶`));
   }
   buildTimeline();

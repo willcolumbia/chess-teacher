@@ -269,9 +269,9 @@ def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
     if in_book and label not in EXPLAINED:
         label = "book"
     # Coach notes: what the move does and, for a bad one, what went wrong and what was better.
-    problem = None
+    problem = theme = None
     if label in EXPLAINED:
-        problem = get_explainer().explain(
+        explanation = get_explainer().explain(
             MoveContext(
                 board=before.copy(stack=False),
                 move=move,
@@ -282,7 +282,9 @@ def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
                 score_after=rel_after,
                 classification=label,
             )
-        ).summary
+        )
+        problem = explanation.summary
+        theme = explanation.themes[0] if explanation.themes else None
     return {
         "uci": move.uci(),
         "san": before.san(move),
@@ -293,6 +295,7 @@ def rate_last_move(board: chess.Board, depth: int = 12) -> Dict:
         "eval_after": score_json(score_after),
         "description": describe_move(before, move),
         "problem": problem,
+        "problem_theme": theme,  # what kind of problem, e.g. "hanging-piece" (see explain/rules.py)
         "best_description": describe_move(before, best_move) if best_move != move else None,
     }
 

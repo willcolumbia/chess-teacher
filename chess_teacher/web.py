@@ -5,18 +5,22 @@
            /api/best is the "Best move" hint)
 /openings  opening trainer (/api/openings, /api/openings/turn)
 /analysis  paste a PGN; analysis runs in a background thread and the page polls for it
-/puzzles   puzzles made from your own mistakes (kept in the browser; Analysis adds them)
+/puzzles   preset puzzles sorted by skill (/api/puzzles, /api/puzzles/<skill>)
+/puzzles/mine  puzzles made from your own mistakes (kept in the browser; Analysis adds them)
 /endgames  endgame drills against Stockfish (/api/endgames, /api/endgames/turn)
 /settings  theme, accent color, board colors and animation
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import threading
 import time
 import uuid
 from collections import defaultdict, deque
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from typing import Deque, Dict
 
@@ -25,7 +29,7 @@ import chess.pgn
 from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import book, chesscom, endgames, openings, opponent, safety
+from . import book, chesscom, endgames, openings, opponent, puzzles, safety
 from .positions import game_status, is_finished, replay, sans_of
 from .analysis import DEFAULT_DEPTH, analyze_pgn, best_move, rate_last_move, read_game
 
@@ -86,34 +90,70 @@ def run_job(job_id: str, pgn: str, depth: int) -> None:
         jobs[job_id].update(update)
 
 
+STATIC_LINK = re.compile(r'((?:src|href)=")/static/([^"?#]+)"')
+
+
+@lru_cache(maxsize=256)
+def _digest(name: str, modified: int, size: int) -> str:
+    return hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:8]
+
+
+def asset_version(name: str) -> str:
+    """A short stamp for a static file that changes whenever its contents do."""
+    try:
+        stat = (STATIC / name).stat()
+    except OSError:
+        return "0"
+    return _digest(name, stat.st_mtime_ns, stat.st_size)
+
+
+def page(name: str):
+    """One of the HTML pages, with a version stamp on every /static/ link in it.
+
+    Cloudflare, in front of the public site, tells browsers to keep scripts and stylesheets for
+    hours. The stamp changes the link whenever the file changes, so the new version is fetched
+    straight away instead of the page running with a stale script or stylesheet.
+    """
+    html = (STATIC / name).read_text(encoding="utf-8")
+    html = STATIC_LINK.sub(lambda m: f'{m.group(1)}/static/{m.group(2)}?v={asset_version(m.group(2))}"', html)
+    response = app.response_class(html, mimetype="text/html")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 def home():
-    return send_from_directory(STATIC, "home.html")
+    return page("home.html")
 
 
 @app.get("/openings")
 def openings_page():
-    return send_from_directory(STATIC, "openings.html")
+    return page("openings.html")
 
 
 @app.get("/analysis")
 def analysis_page():
-    return send_from_directory(STATIC, "analysis.html")
+    return page("analysis.html")
 
 
 @app.get("/puzzles")
 def puzzles_page():
-    return send_from_directory(STATIC, "puzzles.html")
+    return page("puzzles.html")
+
+
+@app.get("/puzzles/mine")
+def my_puzzles_page():
+    return page("my-puzzles.html")
 
 
 @app.get("/endgames")
 def endgames_page():
-    return send_from_directory(STATIC, "endgames.html")
+    return page("endgames.html")
 
 
 @app.get("/settings")
 def settings_page():
-    return send_from_directory(STATIC, "settings.html")
+    return page("settings.html")
 
 
 @app.get("/static/<path:name>")
@@ -275,6 +315,20 @@ def endgames_turn():
         return jsonify({"error": str(exc)}), 400
     except FileNotFoundError as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@app.get("/api/puzzles")
+def puzzles_list():
+    return jsonify(puzzles.list_skills())
+
+
+@app.get("/api/puzzles/<skill_id>")
+def puzzles_skill(skill_id):
+    """One skill with its puzzles: each has the opponent's first move and the solution, step by step."""
+    try:
+        return jsonify(puzzles.get_skill(skill_id))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
 
 
 @app.get("/api/chesscom/<username>")

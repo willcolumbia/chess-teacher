@@ -22,7 +22,7 @@ To use a Stockfish you already have, set `STOCKFISH_PATH=/path/to/stockfish`.
 .venv/bin/python -m chess_teacher   # then open http://localhost:5000
 ```
 
-The site has two pages:
+The site has these pages:
 
 - **Home** (`/`): a board you can play on by clicking or dragging pieces. Only legal moves are allowed.
   - **Two players**: move both sides.
@@ -38,6 +38,20 @@ The site has two pages:
   recommends the moves, for about 10 moves in total. Hint / Show the move buttons help when you're stuck.
   The book lives in `chess_teacher/opening_book.py`; `scripts/check_openings.py` checks every book move
   with Stockfish.
+- **Puzzles** (`/puzzles`): 280 short tactics from real games, 20 for each of 14 skills (mate in one,
+  free pieces, back-rank mate, forks, pins, skewers, discovered attacks, mate in two, removing the
+  defender, deflection, trapped pieces, pawn promotion, sacrifices, mate in three). Each set runs from
+  easy to hard. A puzzle opens with your opponent's last move; you play the solution and the replies
+  come by themselves. Only the puzzle's move counts, except that any checkmate does. Hint rings the
+  piece to move, Show the move draws it, and after the last move a note says why the answer works.
+  Progress is kept in the browser.
+  The puzzles come from the [Lichess puzzle database](https://database.lichess.org/#puzzles) (public
+  domain). `scripts/build_puzzles.py` picked them and wrote `chess_teacher/data/puzzles.json`; run it
+  on a fresh copy of the database to make a new set.
+  - **From your games** (`/puzzles/mine`): every mistake in a game you analyzed becomes a puzzle (find
+    the move you should have played), repeated at growing intervals until you know it.
+- **Endgames** (`/endgames`): 11 basic endings to play out against Stockfish, from the two-rook mate to
+  the Lucena and Philidor positions, in Learn mode (each move shown and explained) or Practice mode.
 - **Analysis** (`/analysis`): a move-by-move review of a finished game:
 
 1. On Chess.com, open the game → **Share** → **PGN** → copy.
@@ -78,12 +92,17 @@ chess_teacher/
   opening_book.py    # opening lines with the idea behind each move
   openings.py        # Openings trainer: book tree, move feedback, opponent replies
   positions.py       # helpers for positions built from UCI move lists
+  puzzles.py         # Puzzles: the skills and their preset puzzles (data/puzzles.json)
+  endgames.py        # Endgames: the drills, Stockfish's replies and verdicts
   web.py             # Flask pages, analysis jobs, /api/play (legal moves) and /api/engine-move
   static/
     home.html/.js    # playable board (Home)
     openings.html/.js  # opening trainer (Openings)
+    puzzles.html/.js   # preset puzzles by skill (Puzzles)
+    my-puzzles.html/.js  # puzzles from your own games (Puzzles → From your games)
+    endgames.html/.js  # endgame drills (Endgames)
     analysis.html/.js  # move-by-move review (Analysis)
-    board.js         # board and arrow drawing shared by both pages
+    board.js         # board and arrow drawing shared by every page
 ```
 
 ### Swapping in Claude for explanations (later)
